@@ -6,6 +6,7 @@ package awg
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"fmt"
 	"math/big"
 )
 
