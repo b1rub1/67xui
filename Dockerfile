@@ -19,6 +19,7 @@ RUN npm run build
 FROM alpine AS awg-tools
 RUN apk add --no-cache \
   build-base \
+  linux-headers \
   git \
   bash \
   pkgconf
