@@ -84,7 +84,7 @@ func runWebServer() {
 	global.SetSubServer(subServer)
 	err = subServer.Start()
 	if err != nil {
-		log.Fatalf("Error starting sub server: %v", err)
+		log.Printf("Error starting sub server (continuing without subscriptions): %v", err)
 	}
 
 	sigCh := make(chan os.Signal, 8)
@@ -146,9 +146,10 @@ func runWebServer() {
 			global.SetSubServer(subServer)
 			err = subServer.Start()
 			if err != nil {
-				log.Fatalf("Error restarting sub server: %v", err)
+				log.Printf("Error restarting sub server (continuing without subscriptions): %v", err)
+			} else {
+				log.Println("Sub server restarted successfully.")
 			}
-			log.Println("Sub server restarted successfully.")
 		case sys.SIGUSR1:
 			logger.Info("Received USR1 signal, restarting xray-core...")
 			err := server.RestartXray()
