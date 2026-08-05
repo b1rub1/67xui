@@ -126,6 +126,25 @@ func GetPortOverride() (port int, configured bool, err error) {
 	return port, true, nil
 }
 
+// GetSubPortOverride returns an optional subscription-server port from XUI_SUB_PORT.
+// Used with network_mode: host to avoid clashing with a stock 3x-ui on :2096.
+func GetSubPortOverride() (port int, configured bool, err error) {
+	value, ok := os.LookupEnv("XUI_SUB_PORT")
+	if !ok || strings.TrimSpace(value) == "" {
+		return 0, false, nil
+	}
+
+	port, err = strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0, true, fmt.Errorf("parse XUI_SUB_PORT: %w", err)
+	}
+	if port < 1 || port > 65535 {
+		return 0, true, fmt.Errorf("XUI_SUB_PORT must be between 1 and 65535")
+	}
+
+	return port, true, nil
+}
+
 // GetBinFolderPath returns the path to the binary folder, defaulting to "bin" if not set via XUI_BIN_FOLDER.
 func GetBinFolderPath() string {
 	binFolderPath := os.Getenv("XUI_BIN_FOLDER")

@@ -3,57 +3,33 @@ services:
     # Pre-built image from GitHub Container Registry — no local build required.
     # On a fresh server: docker compose pull && docker compose up -d
     image: ghcr.io/b1rub1/67xui:main
-    # To build locally instead, comment out 'image' above and uncomment below:
-    # build:
-    #   context: .
-    #   dockerfile: ./Dockerfile
     container_name: 67xui_app
-    # hostname: yourhostname  # optional
 
-    # AmneziaWG creates kernel network interfaces — the container must have
-    # full capability to manage them.  Install the AWG kernel module on the
-    # HOST before starting:
-    #   apt install amneziawg   (Debian/Ubuntu via amnezia PPA)
-    #   modprobe amneziawg
-    # The module lives on the host kernel; the container shares it and only
-    # needs the userspace tools (awg, awg-quick) that are baked into the image.
+    # AmneziaWG / WireGuard UDP does NOT work reliably through docker-proxy
+    # (bridge publish). Host networking lets awg1 bind :51820 directly on
+    # the host — required for client handshakes.
+    network_mode: host
     privileged: true
-    # Required for AWG clients to reach the internet (NAT + forwarding).
-    sysctls:
-      - net.ipv4.ip_forward=1
+
     # TUN device for amneziawg-go userspace (kernel module usually absent).
     devices:
       - /dev/net/tun:/dev/net/tun
+
     volumes:
       - $PWD/db/:/etc/x-ui/
       - $PWD/cert/:/root/cert/
       - $PWD/acme/:/root/.acme.sh/
-      # Expose host kernel modules so awg-quick can load amneziawg if needed.
       - /lib/modules:/lib/modules:ro
+
     environment:
       XRAY_VMESS_AEAD_FORCED: "false"
       XUI_ENABLE_FAIL2BAN: "true"
-      # Panel runs on port 2054 to avoid conflict with a stock 3x-ui on 2053.
-      # Change both XUI_PORT and the ports mapping below if you need a different port.
+      # Avoid clash with stock 3x-ui on the same host (2053 / 2096).
       XUI_PORT: "2054"
-      # XUI_GOGC: "75"
-      # XUI_MEMORY_RELEASE_INTERVAL: "10"
-      # XUI_MEMORY_LIMIT: "400"
-      # GOMEMLIMIT: "400MiB"
-      # XUI_PPROF: "true"
-      # XUI_INIT_WEB_BASE_PATH: "/"
-      # XUI_DB_TYPE: "postgres"
-      # XUI_DB_DSN: "postgres://xui:xui@postgres:5432/xui?sslmode=disable"
+      XUI_SUB_PORT: "2097"
+
     tty: true
-    ports:
-      # Panel web UI (change to match XUI_PORT above).
-      - "2054:2054"
-      # Subscription (host 2097 → container 2096) — avoid clash with stock 3x-ui :2096.
-      - "2097:2096"
-      # AmneziaWG UDP
-      - "51820:51820/udp"
     restart: unless-stopped
-    # mem_limit: 512m
 
   postgres:
     image: postgres:16-alpine
