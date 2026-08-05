@@ -11,24 +11,22 @@ RUN npm run build
 
 # ========================================================
 # Stage: Build AmneziaWG userspace tools
-# amneziawg-tools is a fork of wireguard-tools. It builds
-# 'awg' (config binary) and 'awg-quick' (bash script).
-# The host kernel must have the amneziawg module loaded;
-# the container only needs the userspace tools.
+# amneziawg-tools is a fork of wireguard-tools. The Makefile
+# builds a 'wg' binary and renames it to 'awg' on install;
+# likewise 'wg-quick/linux.bash' is installed as 'awg-quick'.
+# We use 'make install DESTDIR' so renaming is handled for us.
 # ========================================================
 FROM alpine AS awg-tools
 RUN apk add --no-cache \
   build-base \
   git \
   bash \
-  libmnl-dev \
-  elfutils-dev
+  pkgconf
 RUN git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-tools.git /awg-tools
 WORKDIR /awg-tools/src
-# wireguard-tools Makefile outputs the binary in src/ and the
-# quick script in src/wg-quick/ (renamed awg-quick/ in this fork).
-RUN make
-RUN ls -la && ls -la awg-quick/ 2>/dev/null || ls -la wg-quick/ 2>/dev/null || true
+# WITH_WGQUICK=yes: on Alpine /usr/bin/bash may not exist yet so
+# auto-detection fails; force-enable the wg-quick install target.
+RUN make && make install WITH_WGQUICK=yes DESTDIR=/awg-out PREFIX=/usr/local
 
 # ========================================================
 # Stage: Builder (Go binary)
@@ -80,10 +78,10 @@ RUN apk add --no-cache --update \
 # Copy AWG userspace tools built from source.
 # 'awg' is the config tool (analogous to wg).
 # 'awg-quick' is a bash script (analogous to wg-quick); it calls awg + ip.
-# awg binary lives in src/ after make; awg-quick is the bash script
-# in src/awg-quick/ (fork renamed the wg-quick/ dir to awg-quick/).
-COPY --from=awg-tools /awg-tools/src/awg /usr/local/bin/awg
-COPY --from=awg-tools /awg-tools/src/awg-quick/linux.bash /usr/local/bin/awg-quick
+# 'make install' renamed the binary to 'awg' and the script to 'awg-quick'
+# under DESTDIR/usr/local/bin/ — copy them from there.
+COPY --from=awg-tools /awg-out/usr/local/bin/awg /usr/local/bin/awg
+COPY --from=awg-tools /awg-out/usr/local/bin/awg-quick /usr/local/bin/awg-quick
 RUN chmod +x /usr/local/bin/awg /usr/local/bin/awg-quick
 
 COPY --from=builder /app/build/ /app/
