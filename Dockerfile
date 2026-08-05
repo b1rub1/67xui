@@ -15,6 +15,8 @@ RUN npm run build
 # builds a 'wg' binary and renames it to 'awg' on install;
 # likewise 'wg-quick/linux.bash' is installed as 'awg-quick'.
 # We use 'make install DESTDIR' so renaming is handled for us.
+# Built on Alpine so the resulting musl binaries run in the
+# final Alpine image.
 # ========================================================
 FROM alpine AS awg-tools
 RUN apk add --no-cache \
@@ -28,6 +30,22 @@ WORKDIR /awg-tools/src
 # WITH_WGQUICK=yes: on Alpine /usr/bin/bash may not exist yet so
 # auto-detection fails; force-enable the wg-quick install target.
 RUN make && make install WITH_WGQUICK=yes DESTDIR=/awg-out PREFIX=/usr/local
+
+# ========================================================
+# Stage: Build amneziawg-go (userspace daemon)
+# Required in Docker — hosts rarely have the amneziawg kernel
+# module. awg-quick falls back to this binary automatically
+# when `ip link add type amneziawg` fails.
+# CGO_ENABLED=0 → static binary that runs on Alpine even when
+# built on bookworm (golang:1.26-alpine is not always published).
+# ========================================================
+FROM golang:1.26-bookworm AS awg-go
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+  && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-go.git /awg-go
+WORKDIR /awg-go
+ENV CGO_ENABLED=0
+RUN go build -ldflags '-s -w' -o /amneziawg-go .
 
 # ========================================================
 # Stage: Builder (Go binary)
@@ -79,11 +97,14 @@ RUN apk add --no-cache --update \
 # Copy AWG userspace tools built from source.
 # 'awg' is the config tool (analogous to wg).
 # 'awg-quick' is a bash script (analogous to wg-quick); it calls awg + ip.
+# 'amneziawg-go' is the userspace daemon (fallback when no kernel module).
 # 'make install' renamed the binary to 'awg' and the script to 'awg-quick'
 # under DESTDIR/usr/local/bin/ — copy them from there.
 COPY --from=awg-tools /awg-out/usr/local/bin/awg /usr/local/bin/awg
 COPY --from=awg-tools /awg-out/usr/local/bin/awg-quick /usr/local/bin/awg-quick
-RUN chmod +x /usr/local/bin/awg /usr/local/bin/awg-quick
+COPY --from=awg-go /amneziawg-go /usr/local/bin/amneziawg-go
+RUN chmod +x /usr/local/bin/awg /usr/local/bin/awg-quick /usr/local/bin/amneziawg-go \
+  && mkdir -p /var/run/amneziawg /var/run/amnezia
 
 COPY --from=builder /app/build/ /app/
 COPY --from=builder /app/DockerEntrypoint.sh /app/

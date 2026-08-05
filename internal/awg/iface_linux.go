@@ -60,11 +60,15 @@ func bringUp(name string, port int, listen string, settings *Settings) error {
 	}
 
 	if awgQuickPath, err := exec.LookPath("awg-quick"); err == nil {
-		if err := runCmd(awgQuickPath, "up", path); err != nil {
-			return err
+		// Prefer userspace implementation in containers where the amneziawg
+		// kernel module is almost never present. awg-quick falls back to this
+		// automatically when `ip link add type amneziawg` fails, but setting
+		// the env makes the intent explicit and avoids a noisy error first.
+		cmd := exec.Command(awgQuickPath, "up", path)
+		cmd.Env = append(os.Environ(), "WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("awg-quick up: %w (output: %s)", err, strings.TrimSpace(string(out)))
 		}
-		// Belt-and-suspenders: PostUp should have done this, but re-apply in
-		// case the conf was written by an older panel build without PostUp.
 		setupForwarding(name, settings.Address)
 		return nil
 	}
@@ -100,8 +104,8 @@ func bringDown(name, address string) error {
 // individual client add/remove/enable-toggle doesn't restart the interface
 // (and drop all live connections).
 func syncPeers(name string, peers []PeerEntry) error {
-	sockPath := uapiSocketPath(name)
-	if _, err := os.Stat(sockPath); err != nil {
+	sockPath := resolveUAPISocket(name)
+	if sockPath == "" {
 		// Socket not present yet — interface not up via UAPI, skip.
 		return nil
 	}
@@ -163,7 +167,23 @@ func bringUpManual(name string, port int, listen string, settings *Settings) err
 }
 
 func uapiSocketPath(name string) string {
-	return fmt.Sprintf("/var/run/amnezia/%s.sock", name)
+	// amneziawg-go and current amneziawg-tools use /var/run/amneziawg/.
+	// Older builds used /var/run/amnezia/ — try both in syncPeers.
+	return fmt.Sprintf("/var/run/amneziawg/%s.sock", name)
+}
+
+func resolveUAPISocket(name string) string {
+	candidates := []string{
+		fmt.Sprintf("/var/run/amneziawg/%s.sock", name),
+		fmt.Sprintf("/var/run/amnezia/%s.sock", name),
+		fmt.Sprintf("/var/run/wireguard/%s.sock", name),
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 func runCmd(name string, args ...string) error {
