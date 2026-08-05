@@ -302,7 +302,7 @@ export default function AppSidebar() {
       >
         <div className="sider-brand">
           <div className="brand-block">
-            <span className="brand-text">{railCollapsed ? '3X' : '3X-UI'}</span>
+            <span className="brand-text">{railCollapsed ? '67X' : '67X-UI'}</span>
           </div>
           {!railCollapsed && (
             <div className="brand-actions">
@@ -366,7 +366,7 @@ export default function AppSidebar() {
       >
         <div className="drawer-header">
           <div className="brand-block">
-            <span className="drawer-brand">3X-UI</span>
+            <span className="drawer-brand">67X-UI</span>
           </div>
           <div className="drawer-header-actions">
             <DocsButton ariaLabel={t('menu.docs') || 'Documentation'} />

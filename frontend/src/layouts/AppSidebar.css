@@ -30,6 +30,26 @@
   color: var(--ant-color-text);
 }
 
+.brand-text,
+.drawer-brand {
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  background: linear-gradient(135deg, #0d9488, #2563eb);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+body.dark .brand-text,
+body.dark .drawer-brand,
+html[data-theme="ultra-dark"] .brand-text,
+html[data-theme="ultra-dark"] .drawer-brand {
+  background: linear-gradient(135deg, #2dd4bf, #60a5fa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 .sider-brand {
   display: flex;
   align-items: center;

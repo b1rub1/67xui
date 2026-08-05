@@ -33,39 +33,46 @@ const initialUltra = readBool(STORAGE_ULTRA, false);
 applyDom(initialDark, initialUltra);
 
 const DARK_TOKENS = {
-  colorBgBase: '#1a1b1f',
-  colorBgLayout: '#1a1b1f',
-  colorBgContainer: '#23252b',
-  colorBgElevated: '#2d2f37',
+  colorBgBase: '#14181c',
+  colorBgLayout: '#14181c',
+  colorBgContainer: '#1c2228',
+  colorBgElevated: '#252c34',
+  colorPrimary: '#14b8a6',
+  colorLink: '#2dd4bf',
+  colorInfo: '#14b8a6',
 };
 const ULTRA_DARK_TOKENS = {
   colorBgBase: '#000',
   colorBgLayout: '#000',
-  colorBgContainer: '#101013',
-  colorBgElevated: '#1a1a1e',
+  colorBgContainer: '#0a0e10',
+  colorBgElevated: '#12171a',
+  colorPrimary: '#14b8a6',
+  colorLink: '#2dd4bf',
+  colorInfo: '#14b8a6',
 };
 const DARK_LAYOUT_TOKENS = {
-  bodyBg: '#1a1b1f',
-  headerBg: '#15161a',
+  bodyBg: '#14181c',
+  headerBg: '#101418',
   headerColor: '#ffffff',
-  footerBg: '#1a1b1f',
-  siderBg: '#15161a',
-  triggerBg: '#23252b',
+  footerBg: '#14181c',
+  siderBg: '#101418',
+  triggerBg: '#1c2228',
   triggerColor: '#ffffff',
 };
 const ULTRA_DARK_LAYOUT_TOKENS = {
   bodyBg: '#000',
-  headerBg: '#050507',
+  headerBg: '#040607',
   headerColor: '#ffffff',
   footerBg: '#000',
-  siderBg: '#050507',
-  triggerBg: '#1a1a1e',
+  siderBg: '#040607',
+  triggerBg: '#12171a',
   triggerColor: '#ffffff',
 };
 const DARK_MENU_TOKENS = {
-  darkItemBg: '#15161a',
-  darkSubMenuItemBg: '#1a1b1f',
-  darkPopupBg: '#23252b',
+  darkItemBg: '#101418',
+  darkSubMenuItemBg: '#14181c',
+  darkPopupBg: '#1c2228',
+  darkItemSelectedBg: 'rgba(20, 184, 166, 0.18)',
 };
 const ULTRA_DARK_MENU_TOKENS = {
   darkItemBg: '#050507',
@@ -91,9 +98,9 @@ const LIGHT_CONTRAST_TOKENS = {
   colorSuccessText: '#237804',
 };
 const LIGHT_BUTTON_TOKENS = {
-  colorPrimary: '#0958d9',
-  colorPrimaryHover: '#2468e5',
-  colorPrimaryActive: '#073ea8',
+  colorPrimary: '#0f766e',
+  colorPrimaryHover: '#0d9488',
+  colorPrimaryActive: '#115e59',
 };
 
 // hashed:false drops the `:where(.css-<hash>)` wrapper antd puts around every

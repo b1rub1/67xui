@@ -4,7 +4,7 @@
   --bg-card-solid: #ffffff;
   --color-text: rgba(0, 0, 0, 0.88);
   --color-text-subtle: rgba(0, 0, 0, 0.55);
-  --color-accent: #6366f1;
+  --color-accent: #0d9488;
   --color-border: rgba(255, 255, 255, 0.6);
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 18px 50px rgba(99, 102, 241, 0.18);
   --blob-1: rgba(99, 102, 241, 0.55);
@@ -27,7 +27,7 @@
   --bg-card-solid: #1c1e22;
   --color-text: rgba(255, 255, 255, 0.92);
   --color-text-subtle: rgba(255, 255, 255, 0.55);
-  --color-accent: #3b82f6;
+  --color-accent: #14b8a6;
   --color-border: rgba(255, 255, 255, 0.10);
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 20px 60px rgba(59, 130, 246, 0.22);
   --blob-1: rgba(96, 165, 250, 0.42);
@@ -301,14 +301,14 @@
   font-weight: 700;
   letter-spacing: 1.5px;
   color: var(--color-text);
-  background: linear-gradient(135deg, var(--color-accent), #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #2563eb);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .login-app.is-dark .brand-name {
-  background: linear-gradient(135deg, #60a5fa, #1d4ed8);
+  background: linear-gradient(135deg, #2dd4bf, #60a5fa);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -319,11 +319,11 @@
   width: 40px;
   height: 3px;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--color-accent), #ec4899);
+  background: linear-gradient(90deg, var(--color-accent), #2563eb);
 }
 
 .login-app.is-dark .brand-accent {
-  background: linear-gradient(90deg, #60a5fa, #1d4ed8);
+  background: linear-gradient(90deg, #2dd4bf, #60a5fa);
 }
 
 .welcome {
