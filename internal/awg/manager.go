@@ -92,7 +92,11 @@ func (m *Manager) Reconcile(desired []Instance) error {
 			}
 			m.running[inst.ID] = &runningIface{inst: inst, name: name}
 		} else {
-			// Already running — hot-sync peers without restarting.
+			// Already running — ensure NAT/forwarding is present (older builds
+			// brought the iface up without PostUp) and hot-sync peers.
+			if inst.Settings != nil {
+				setupForwarding(ri.name, inst.Settings.Address)
+			}
 			if err := syncPeers(ri.name, inst.Settings.EffectivePeers()); err != nil {
 				logger.Warning("awg: sync-peers", ri.name, ":", err)
 			}
@@ -155,6 +159,7 @@ func (m *Manager) Ensure(inst Instance) error {
 	if err := syncPeers(ri.name, inst.Settings.EffectivePeers()); err != nil {
 		return err
 	}
+	setupForwarding(ri.name, inst.Settings.Address)
 	ri.inst = inst
 	return nil
 }

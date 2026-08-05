@@ -15,3 +15,7 @@ func bringDown(name, address string) error {
 func syncPeers(name string, peers []PeerEntry) error {
 	return fmt.Errorf("awg: peer sync is only supported on Linux")
 }
+
+func setupForwarding(iface, address string) {}
+
+func teardownForwarding(iface, address string) {}
