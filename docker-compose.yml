@@ -17,8 +17,10 @@ services:
 
     volumes:
       - $PWD/db/:/etc/x-ui/
-      - $PWD/cert/:/root/cert/
-      - $PWD/acme/:/root/.acme.sh/
+      # Host certs (same paths as stock 3x-ui). Do NOT mount $PWD/cert —
+      # that shadows /root/cert and breaks HTTPS.
+      - /root/cert:/root/cert
+      - /root/.acme.sh:/root/.acme.sh
       - /lib/modules:/lib/modules:ro
 
     environment:
