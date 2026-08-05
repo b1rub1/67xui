@@ -201,8 +201,8 @@ func setupForwarding(iface, address string) {
 	subnet := tunnelSubnet(address)
 	_ = exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").Run()
 	if iface != "" {
-		iptablesEnsure([]string{"FORWARD", "-i", iface, "-j", "ACCEPT"})
-		iptablesEnsure([]string{"FORWARD", "-o", iface, "-j", "ACCEPT"})
+		iptablesEnsureForward([]string{"-i", iface, "-j", "ACCEPT"})
+		iptablesEnsureForward([]string{"-o", iface, "-j", "ACCEPT"})
 	}
 	if subnet != "" {
 		iptablesEnsure([]string{"nat", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"})
@@ -217,6 +217,19 @@ func teardownForwarding(iface, address string) {
 	}
 	if subnet != "" {
 		_ = exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE").Run()
+	}
+}
+
+// iptablesEnsureForward inserts a FORWARD rule at the head of the chain so
+// it runs before UFW's ufw-before-forward DROP/reject jumps.
+func iptablesEnsureForward(args []string) {
+	check := append([]string{"-C", "FORWARD"}, args...)
+	insert := append([]string{"-I", "FORWARD", "1"}, args...)
+	if err := exec.Command("iptables", check...).Run(); err == nil {
+		return
+	}
+	if out, err := exec.Command("iptables", insert...).CombinedOutput(); err != nil {
+		logger.Warning("awg: iptables", strings.Join(insert, " "), ":", err, string(out))
 	}
 }
 

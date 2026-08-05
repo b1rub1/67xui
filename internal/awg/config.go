@@ -77,7 +77,7 @@ func ServerConf(port int, settings *Settings) string {
 	subnet := tunnelSubnet(settings.Address)
 	if subnet != "" {
 		// %i is expanded by awg-quick/wg-quick to the interface name.
-		fmt.Fprintf(&b, "PostUp = sysctl -w net.ipv4.ip_forward=1; iptables -C FORWARD -i %%i -j ACCEPT 2>/dev/null || iptables -A FORWARD -i %%i -j ACCEPT; iptables -C FORWARD -o %%i -j ACCEPT 2>/dev/null || iptables -A FORWARD -o %%i -j ACCEPT; iptables -t nat -C POSTROUTING -s %s ! -d %s -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s %s ! -d %s -j MASQUERADE\n", subnet, subnet, subnet, subnet)
+		fmt.Fprintf(&b, "PostUp = sysctl -w net.ipv4.ip_forward=1; iptables -C FORWARD -i %%i -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i %%i -j ACCEPT; iptables -C FORWARD -o %%i -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -o %%i -j ACCEPT; iptables -t nat -C POSTROUTING -s %s ! -d %s -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s %s ! -d %s -j MASQUERADE\n", subnet, subnet, subnet, subnet)
 		fmt.Fprintf(&b, "PostDown = iptables -D FORWARD -i %%i -j ACCEPT 2>/dev/null || true; iptables -D FORWARD -o %%i -j ACCEPT 2>/dev/null || true; iptables -t nat -D POSTROUTING -s %s ! -d %s -j MASQUERADE 2>/dev/null || true\n", subnet, subnet)
 	}
 	return b.String()
