@@ -761,7 +761,7 @@ type awgPeerEntry struct {
 func buildAWGClientConf(serverHost string, serverPort int, s awgSettings, peer awgPeerEntry) string {
 	mtu := s.MTU
 	if mtu <= 0 {
-		mtu = 1420
+		mtu = 1100
 	}
 	dns := s.DNS
 	if dns == "" {

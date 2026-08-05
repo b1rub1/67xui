@@ -14,7 +14,7 @@ type Settings struct {
 	SecretKey string `json:"secretKey"` // server private key (base64)
 	PublicKey string `json:"publicKey"` // server public key (base64, derived)
 	Address   string `json:"address"`   // server tunnel IP, e.g. "10.8.0.1/24"
-	MTU       int    `json:"mtu"`       // tunnel MTU; 0 → use default 1420
+	MTU       int    `json:"mtu"`       // tunnel MTU; 0 → use default 1100
 	DNS       string `json:"dns"`       // client-side DNS, e.g. "1.1.1.1"
 
 	Params Params `json:"params"` // AWG 2.0 obfuscation parameters
@@ -65,7 +65,7 @@ func ServerConf(port int, settings *Settings) string {
 	var b strings.Builder
 	mtu := settings.MTU
 	if mtu <= 0 {
-		mtu = 1420
+		mtu = 1100
 	}
 	b.WriteString("[Interface]\n")
 	fmt.Fprintf(&b, "PrivateKey = %s\n", settings.SecretKey)
@@ -126,7 +126,7 @@ func ClientConf(serverHost string, serverPort int, serverPubKey string, settings
 	var b strings.Builder
 	mtu := settings.MTU
 	if mtu <= 0 {
-		mtu = 1420
+		mtu = 1100
 	}
 	dns := settings.DNS
 	if dns == "" {
