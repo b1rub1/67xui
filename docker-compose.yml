@@ -18,6 +18,9 @@ services:
     # The module lives on the host kernel; the container shares it and only
     # needs the userspace tools (awg, awg-quick) that are baked into the image.
     privileged: true
+    # Required for AWG clients to reach the internet (NAT + forwarding).
+    sysctls:
+      - net.ipv4.ip_forward=1
     volumes:
       - $PWD/db/:/etc/x-ui/
       - $PWD/cert/:/root/cert/
@@ -42,6 +45,10 @@ services:
     ports:
       # Panel web UI (change to match XUI_PORT above).
       - "2054:2054"
+      # Subscription (host 2097 → container 2096) — avoid clash with stock 3x-ui :2096.
+      - "2097:2096"
+      # AmneziaWG UDP
+      - "51820:51820/udp"
     restart: unless-stopped
     # mem_limit: 512m
 

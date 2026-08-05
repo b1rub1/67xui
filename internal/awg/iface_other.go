@@ -8,7 +8,7 @@ func bringUp(name string, port int, listen string, settings *Settings) error {
 	return fmt.Errorf("awg: interface management is only supported on Linux (got non-linux build)")
 }
 
-func bringDown(name string) error {
+func bringDown(name, address string) error {
 	return fmt.Errorf("awg: interface management is only supported on Linux")
 }
 

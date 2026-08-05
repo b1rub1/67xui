@@ -38,7 +38,7 @@ func bringUp(name string, port int, listen string, settings *Settings) error {
 	var b strings.Builder
 	b.WriteString(serverConf)
 	for _, peer := range settings.EffectivePeers() {
-		if !peer.Enable {
+		if !peerIsActive(peer) {
 			continue
 		}
 		b.WriteString("\n[Peer]\n")
@@ -60,16 +60,27 @@ func bringUp(name string, port int, listen string, settings *Settings) error {
 	}
 
 	if awgQuickPath, err := exec.LookPath("awg-quick"); err == nil {
-		return runCmd(awgQuickPath, "up", path)
+		if err := runCmd(awgQuickPath, "up", path); err != nil {
+			return err
+		}
+		// Belt-and-suspenders: PostUp should have done this, but re-apply in
+		// case the conf was written by an older panel build without PostUp.
+		setupForwarding(name, settings.Address)
+		return nil
 	}
 
 	// Fallback: bring the interface up manually.
-	return bringUpManual(name, port, listen, settings)
+	if err := bringUpManual(name, port, listen, settings); err != nil {
+		return err
+	}
+	setupForwarding(name, settings.Address)
+	return nil
 }
 
 // bringDown tears down an AWG interface, preferring awg-quick down.
-func bringDown(name string) error {
+func bringDown(name, address string) error {
 	path := confPath(name)
+	teardownForwarding(name, address)
 	if awgQuickPath, err := exec.LookPath("awg-quick"); err == nil {
 		if err := runCmd(awgQuickPath, "down", path); err != nil {
 			logger.Warning("awg: awg-quick down failed, trying ip link del:", err)
@@ -107,7 +118,7 @@ func syncPeers(name string, peers []PeerEntry) error {
 	// peers with replace_peers=true so UAPI replaces the set atomically).
 	cmd.WriteString("replace_peers=true\n")
 	for _, peer := range peers {
-		if !peer.Enable || peer.PublicKey == "" {
+		if !peerIsActive(peer) {
 			continue
 		}
 		fmt.Fprintf(&cmd, "public_key=%s\n", hexKey(peer.PublicKey))
@@ -162,4 +173,48 @@ func runCmd(name string, args ...string) error {
 		return fmt.Errorf("%s %s: %w (output: %s)", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// setupForwarding enables IPv4 forwarding and installs FORWARD/MASQUERADE rules
+// so AWG clients can reach the internet. Safe to call repeatedly.
+func setupForwarding(iface, address string) {
+	subnet := tunnelSubnet(address)
+	_ = exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").Run()
+	if iface != "" {
+		iptablesEnsure([]string{"FORWARD", "-i", iface, "-j", "ACCEPT"})
+		iptablesEnsure([]string{"FORWARD", "-o", iface, "-j", "ACCEPT"})
+	}
+	if subnet != "" {
+		iptablesEnsure([]string{"nat", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"})
+	}
+}
+
+func teardownForwarding(iface, address string) {
+	subnet := tunnelSubnet(address)
+	if iface != "" {
+		_ = exec.Command("iptables", "-D", "FORWARD", "-i", iface, "-j", "ACCEPT").Run()
+		_ = exec.Command("iptables", "-D", "FORWARD", "-o", iface, "-j", "ACCEPT").Run()
+	}
+	if subnet != "" {
+		_ = exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE").Run()
+	}
+}
+
+// iptablesEnsure adds a rule only when it is not already present.
+// tableArgs is either ["FORWARD", ...] or ["nat", "POSTROUTING", ...].
+func iptablesEnsure(args []string) {
+	var check, add []string
+	if len(args) > 0 && args[0] == "nat" {
+		check = append([]string{"-t", "nat", "-C"}, args[1:]...)
+		add = append([]string{"-t", "nat", "-A"}, args[1:]...)
+	} else {
+		check = append([]string{"-C"}, args...)
+		add = append([]string{"-A"}, args...)
+	}
+	if err := exec.Command("iptables", check...).Run(); err == nil {
+		return
+	}
+	if out, err := exec.Command("iptables", add...).CombinedOutput(); err != nil {
+		logger.Warning("awg: iptables", strings.Join(add, " "), ":", err, string(out))
+	}
 }

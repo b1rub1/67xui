@@ -48,10 +48,19 @@ type PeerEntry struct {
 	Enable       bool     `json:"enable"`
 }
 
+// peerIsActive reports whether a peer should be programmed into the interface.
+func peerIsActive(p PeerEntry) bool {
+	return p.PublicKey != "" && p.Enable
+}
+
 // ServerConf renders the AWG interface .conf that awg-quick / awg-tools will
 // apply to the kernel or userspace interface. Only the [Interface] section is
 // rendered here; peers are applied separately via UAPI so hot-add/remove works
 // without restarting the whole interface.
+//
+// PostUp/PostDown enable IPv4 forwarding and NAT so client traffic can reach
+// the internet (without this, handshake/ping to the tunnel works but there is
+// no internet access).
 func ServerConf(port int, settings *Settings) string {
 	var b strings.Builder
 	mtu := settings.MTU
@@ -64,7 +73,50 @@ func ServerConf(port int, settings *Settings) string {
 	fmt.Fprintf(&b, "ListenPort = %d\n", port)
 	fmt.Fprintf(&b, "MTU = %d\n", mtu)
 	writeParams(&b, &settings.Params)
+
+	subnet := tunnelSubnet(settings.Address)
+	if subnet != "" {
+		// %i is expanded by awg-quick/wg-quick to the interface name.
+		fmt.Fprintf(&b, "PostUp = sysctl -w net.ipv4.ip_forward=1; iptables -C FORWARD -i %%i -j ACCEPT 2>/dev/null || iptables -A FORWARD -i %%i -j ACCEPT; iptables -C FORWARD -o %%i -j ACCEPT 2>/dev/null || iptables -A FORWARD -o %%i -j ACCEPT; iptables -t nat -C POSTROUTING -s %s ! -d %s -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s %s ! -d %s -j MASQUERADE\n", subnet, subnet, subnet, subnet)
+		fmt.Fprintf(&b, "PostDown = iptables -D FORWARD -i %%i -j ACCEPT 2>/dev/null || true; iptables -D FORWARD -o %%i -j ACCEPT 2>/dev/null || true; iptables -t nat -D POSTROUTING -s %s ! -d %s -j MASQUERADE 2>/dev/null || true\n", subnet, subnet)
+	}
 	return b.String()
+}
+
+// tunnelSubnet turns a host address like "10.66.0.1/24" into the network
+// prefix "10.66.0.0/24" used as the MASQUERADE source. Returns "" when the
+// address is missing or unparsable.
+func tunnelSubnet(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	// Prefer netip via a small parse without pulling heavy deps into this file —
+	// Address is always written by the panel as host/prefix.
+	var ipPart, maskPart string
+	if i := strings.IndexByte(addr, '/'); i >= 0 {
+		ipPart, maskPart = addr[:i], addr[i+1:]
+	} else {
+		return ""
+	}
+	parts := strings.Split(ipPart, ".")
+	if len(parts) != 4 || maskPart == "" {
+		// IPv6 or unexpected — fall back to the original prefix as-is.
+		return addr
+	}
+	switch maskPart {
+	case "24":
+		return parts[0] + "." + parts[1] + "." + parts[2] + ".0/24"
+	case "16":
+		return parts[0] + "." + parts[1] + ".0.0/16"
+	case "8":
+		return parts[0] + ".0.0.0/8"
+	case "32":
+		// A /32 server address can't NAT a whole client pool; use /24 of the same octet.
+		return parts[0] + "." + parts[1] + "." + parts[2] + ".0/24"
+	default:
+		return addr
+	}
 }
 
 // ClientConf renders the full [Interface]+[Peer] .conf for a single client.

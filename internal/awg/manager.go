@@ -66,7 +66,11 @@ func (m *Manager) Reconcile(desired []Instance) error {
 	// Stop interfaces that are no longer wanted.
 	for id, ri := range m.running {
 		if _, ok := wantIDs[id]; !ok {
-			if err := bringDown(ri.name); err != nil {
+			addr := ""
+			if ri.inst.Settings != nil {
+				addr = ri.inst.Settings.Address
+			}
+			if err := bringDown(ri.name, addr); err != nil {
 				logger.Warning("awg: bring-down", ri.name, ":", err)
 			}
 			delete(m.running, id)
@@ -103,7 +107,11 @@ func (m *Manager) StopAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, ri := range m.running {
-		if err := bringDown(ri.name); err != nil {
+		addr := ""
+		if ri.inst.Settings != nil {
+			addr = ri.inst.Settings.Address
+		}
+		if err := bringDown(ri.name, addr); err != nil {
 			logger.Warning("awg: stop-all bring-down", ri.name, ":", err)
 		}
 		delete(m.running, id)
@@ -159,7 +167,11 @@ func (m *Manager) Remove(id int) {
 	if !ok {
 		return
 	}
-	if err := bringDown(ri.name); err != nil {
+	addr := ""
+	if ri.inst.Settings != nil {
+		addr = ri.inst.Settings.Address
+	}
+	if err := bringDown(ri.name, addr); err != nil {
 		logger.Warning("awg: remove bring-down", ri.name, ":", err)
 	}
 	delete(m.running, id)
