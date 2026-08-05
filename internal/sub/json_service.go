@@ -236,6 +236,12 @@ func (s *SubJsonService) getConfig(subReq *SubService, inbound *model.Inbound, c
 				continue
 			}
 			newOutbounds = append(newOutbounds, wgOutbound)
+		case "amneziawg":
+			awgOutbound := s.genAmneziaWG(subReq, inbound, client)
+			if awgOutbound == nil {
+				continue
+			}
+			newOutbounds = append(newOutbounds, awgOutbound)
 		}
 
 		newOutbounds = append(newOutbounds, s.defaultOutbounds...)
@@ -579,6 +585,91 @@ func (s *SubJsonService) genWireguard(inbound *model.Inbound, client model.Clien
 		"protocol": string(inbound.Protocol),
 		"tag":      "proxy",
 		"settings": settings,
+	}
+	result, _ := json.MarshalIndent(outbound, "", "  ")
+	return result
+}
+
+// genAmneziaWG builds an amneziawg outbound config for the JSON subscription,
+// including all AWG 2.0 obfuscation parameters (Jc/Jmin/Jmax/S1–S4/H1–H4/I1–I5).
+// The shape mirrors genWireguard but uses protocol "amneziawg" and adds the
+// obfuscation param block so clients with amneziawg support can connect.
+// Returns nil when the client has no private key or the server public key
+// cannot be resolved.
+func (s *SubJsonService) genAmneziaWG(subReq *SubService, inbound *model.Inbound, client model.Client) json_util.RawMessage {
+	if client.PrivateKey == "" {
+		return nil
+	}
+
+	var rawSettings map[string]any
+	_ = json.Unmarshal([]byte(inbound.Settings), &rawSettings)
+	settingsJSON, _ := json.Marshal(rawSettings)
+
+	var settings awgSettings
+	if err := json.Unmarshal(settingsJSON, &settings); err != nil {
+		return nil
+	}
+
+	// Derive server public key from private when it's absent in stored settings.
+	if settings.PublicKey == "" && settings.SecretKey != "" {
+		if pub, err := wgutil.PublicKeyFromPrivate(settings.SecretKey); err == nil {
+			settings.PublicKey = pub
+		}
+	}
+	if settings.PublicKey == "" {
+		return nil
+	}
+
+	ka := client.KeepAlive
+	if ka <= 0 {
+		ka = 25
+	}
+	peer := map[string]any{
+		"endpoint":   joinHostPort(subReq.resolveInboundAddress(inbound), inbound.Port),
+		"publicKey":  settings.PublicKey,
+		"allowedIPs": []string{"0.0.0.0/0", "::/0"},
+		"keepAlive":  ka,
+	}
+	if client.PreSharedKey != "" {
+		peer["preSharedKey"] = client.PreSharedKey
+	}
+
+	outSettings := map[string]any{
+		"secretKey": client.PrivateKey,
+		"peers":     []any{peer},
+	}
+	if len(client.AllowedIPs) > 0 {
+		outSettings["address"] = client.AllowedIPs
+	}
+	if settings.MTU > 0 {
+		outSettings["mtu"] = settings.MTU
+	}
+
+	// AWG 2.0 obfuscation parameters — all required for the client to connect.
+	p := settings.Params
+	outSettings["Jc"] = p.Jc
+	outSettings["Jmin"] = p.Jmin
+	outSettings["Jmax"] = p.Jmax
+	outSettings["S1"] = p.S1
+	outSettings["S2"] = p.S2
+	outSettings["S3"] = p.S3
+	outSettings["S4"] = p.S4
+	outSettings["H1"] = p.H1
+	outSettings["H2"] = p.H2
+	outSettings["H3"] = p.H3
+	outSettings["H4"] = p.H4
+	if p.I1 != "" {
+		outSettings["I1"] = p.I1
+		outSettings["I2"] = p.I2
+		outSettings["I3"] = p.I3
+		outSettings["I4"] = p.I4
+		outSettings["I5"] = p.I5
+	}
+
+	outbound := map[string]any{
+		"protocol": string(inbound.Protocol),
+		"tag":      "proxy",
+		"settings": outSettings,
 	}
 	result, _ := json.MarshalIndent(outbound, "", "  ")
 	return result
