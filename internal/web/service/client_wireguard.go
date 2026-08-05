@@ -133,7 +133,7 @@ func defaultWireguardClients(existing, clients []model.Client, interfaceClients 
 
 // defaultAWGClients is the AmneziaWG counterpart of defaultWireguardClients —
 // same Curve25519 keypair / AllowedIPs allocation, but from the AWG default
-// tunnel subnet (10.66.0.0/24).
+// tunnel subnet (10.66.0.0/16).
 func defaultAWGClients(existing, clients []model.Client, interfaceClients []any) error {
 	return defaultTunnelClients(existing, clients, interfaceClients, defaultAWGBase, "amneziawg")
 }
@@ -144,6 +144,9 @@ func defaultTunnelClients(existing, clients []model.Client, interfaceClients []a
 		used = append(used, existing[i].AllowedIPs...)
 	}
 	base := wireguardAllocationBase(used, fallbackBase)
+	if protoLabel == "amneziawg" {
+		base = awgAllocationBase(used, fallbackBase)
+	}
 	for i := range clients {
 		c := &clients[i]
 		if c.PrivateKey == "" && c.PublicKey == "" {

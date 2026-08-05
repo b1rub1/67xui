@@ -284,8 +284,8 @@ export function createDefaultAmneziaWGInboundSettings(): AmneziaWGInboundSetting
   const rand32 = () => Math.floor(Math.random() * 0xFFFFFF) + 5;
   return {
     secretKey: Wireguard.generateKeypair().privateKey,
-    address: '10.66.0.1/24',
-    mtu: 1420,
+    address: '10.66.0.1/16',
+    mtu: 1100,
     dns: '1.1.1.1',
     params: {
       jc:   4,
@@ -299,11 +299,6 @@ export function createDefaultAmneziaWGInboundSettings(): AmneziaWGInboundSetting
       h2:   rand32(),
       h3:   rand32(),
       h4:   rand32(),
-      i1:   '<r 40>',
-      i2:   '<r 40>',
-      i3:   '<r 0>',
-      i4:   '<r 0>',
-      i5:   '<r 0>',
     },
     clients: [],
   };

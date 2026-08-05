@@ -30,7 +30,7 @@ export default function AmneziaWGFields({ awgPubKey, regenInboundAWG, regenAWGPa
       </Form.Item>
 
       <FormField name={['settings', 'address']} label={t('pages.xray.amneziawg.address', 'Tunnel Address')}>
-        <Input placeholder="10.66.0.1/24" />
+        <Input placeholder="10.66.0.1/16" />
       </FormField>
 
       <FormField name={['settings', 'mtu']} label="MTU">

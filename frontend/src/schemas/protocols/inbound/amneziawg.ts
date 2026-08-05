@@ -30,8 +30,8 @@ export type AWGClient = z.infer<typeof AWGClientSchema>;
 
 export const AmneziaWGInboundSettingsSchema = z.object({
   secretKey: z.string().default(''),
-  address:   z.string().default('10.66.0.1/24'),
-  mtu:       z.number().int().min(576).max(9000).default(1420),
+  address:   z.string().default('10.66.0.1/16'),
+  mtu:       z.number().int().min(576).max(9000).default(1100),
   dns:       z.string().default('1.1.1.1'),
   params:    AWGParamsSchema,
   clients:   z.array(AWGClientSchema).default([]),

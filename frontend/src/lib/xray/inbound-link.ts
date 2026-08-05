@@ -1155,7 +1155,7 @@ export function genLink(input: GenLinkInput): string {
       const peerPrivKey = (client as Record<string, unknown>).privateKey as string | undefined;
       if (!peerPrivKey) return '';
       const peerPubKey = peerPrivKey.length > 0 ? Wireguard.generateKeypair(peerPrivKey).publicKey : '';
-      const allowedIPs = ((client as Record<string, unknown>).allowedIPs as string[] | undefined ?? []).join(',') || '10.66.0.0/24';
+      const allowedIPs = ((client as Record<string, unknown>).allowedIPs as string[] | undefined ?? []).join(',') || '10.66.0.0/16';
       const dns = typeof awgSettings.dns === 'string' ? awgSettings.dns : '1.1.1.1';
       const mtu = typeof awgSettings.mtu === 'number' ? awgSettings.mtu : 1420;
       const url = new URL(`amneziawg://${formatUrlHost(address)}:${port}`);
@@ -1374,7 +1374,7 @@ function genAWGClientConfig(
     ? Wireguard.generateKeypair(settings.secretKey).publicKey
     : '';
   const peerPrivKey = (client.privateKey as string | undefined) ?? '';
-  const peerAllowedIPs = Array.isArray(client.allowedIPs) ? (client.allowedIPs as string[]).join(', ') : '10.66.0.0/24';
+  const peerAllowedIPs = Array.isArray(client.allowedIPs) ? (client.allowedIPs as string[]).join(', ') : '10.66.0.0/16';
   const dns = typeof settings.dns === 'string' ? settings.dns : '1.1.1.1';
   const mtu = typeof settings.mtu === 'number' ? settings.mtu : 1420;
 

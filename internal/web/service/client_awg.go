@@ -10,7 +10,7 @@ import (
 	wgutil "github.com/mhsanaei/3x-ui/v3/internal/util/wireguard"
 )
 
-const defaultAWGBase = "10.66.0.0/24"
+const defaultAWGBase = "10.66.0.0/16"
 
 // prepareAWGClients validates and auto-fills the client list inside an AWG
 // inbound's settings JSON before the inbound is persisted. This function is
@@ -53,9 +53,9 @@ func prepareAWGClients(inbound *model.Inbound) error {
 		settings.Params = params
 	}
 
-	// Default tunnel address.
-	if settings.Address == "" {
-		settings.Address = "10.66.0.1/24"
+	// Default tunnel address — /16 so the pool fits thousands of clients.
+	if settings.Address == "" || settings.Address == "10.66.0.1/24" {
+		settings.Address = "10.66.0.1/16"
 	}
 
 	// Collect already-used client IPs for allocation.
@@ -113,14 +113,14 @@ func prepareAWGClients(inbound *model.Inbound) error {
 	return nil
 }
 
-// awgAllocationBase returns the /24 base network derived from the already-used
-// addresses, falling back to the supplied default.
+// awgAllocationBase returns the /16 base network derived from already-used
+// addresses, falling back to the supplied default (10.66.0.0/16).
 func awgAllocationBase(used []string, fallback string) string {
 	for _, u := range used {
 		u = trimSpace(u)
 		if p, err := netip.ParsePrefix(u); err == nil {
 			if p.Addr().Is4() {
-				if base, err := p.Addr().Prefix(24); err == nil {
+				if base, err := p.Addr().Prefix(16); err == nil {
 					return base.String()
 				}
 			}
