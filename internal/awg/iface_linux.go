@@ -4,6 +4,7 @@ package awg
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -210,6 +211,26 @@ func runCmd(name string, args ...string) error {
 		return fmt.Errorf("%s %s: %w (output: %s)", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// dumpPeers reads the live peer table for iface `name` via UAPI get=1.
+// Returns nil when the socket is missing (interface not up).
+func dumpPeers(name string) ([]peerDump, error) {
+	sockPath := resolveUAPISocket(name)
+	if sockPath == "" {
+		return nil, nil
+	}
+	conn, err := net.DialTimeout("unix", sockPath, 3*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("awg: uapi connect %s: %w", sockPath, err)
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+
+	if _, err := io.WriteString(conn, "get=1\n\n"); err != nil {
+		return nil, fmt.Errorf("awg: uapi get write: %w", err)
+	}
+	return parsePeerDump(conn)
 }
 
 // setupForwarding enables IPv4 forwarding and installs FORWARD/MASQUERADE rules

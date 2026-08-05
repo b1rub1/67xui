@@ -16,6 +16,14 @@ func syncPeers(name string, peers []PeerEntry) error {
 	return fmt.Errorf("awg: peer sync is only supported on Linux")
 }
 
+func syncPeersDiff(name string, peers []PeerEntry, removePubKeys []string) error {
+	return fmt.Errorf("awg: peer sync is only supported on Linux")
+}
+
+func dumpPeers(name string) ([]peerDump, error) {
+	return nil, fmt.Errorf("awg: peer dump is only supported on Linux")
+}
+
 func setupForwarding(iface, address string) {}
 
 func teardownForwarding(iface, address string) {}
