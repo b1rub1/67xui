@@ -2,7 +2,7 @@ services:
   67xui:
     # Pre-built image from GitHub Container Registry — no local build required.
     # On a fresh server: docker compose pull && docker compose up -d
-    image: ghcr.io/b1rub1/67xui:latest
+    image: ghcr.io/b1rub1/67xui:main
     # To build locally instead, comment out 'image' above and uncomment below:
     # build:
     #   context: .
