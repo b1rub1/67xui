@@ -32,23 +32,30 @@ RUN ls -la && ls -la awg-quick/ 2>/dev/null || ls -la wg-quick/ 2>/dev/null || t
 
 # ========================================================
 # Stage: Builder (Go binary)
+# golang:1.26-alpine doesn't exist on Docker Hub; use the
+# bookworm (Debian) image and compile against musl so the
+# resulting binary runs in the Alpine final stage.
 # ========================================================
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /app
 ARG TARGETARCH
 
-RUN apk --no-cache --update add \
-  build-base \
-  gcc \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  musl-tools \
+  musl-dev \
   curl \
-  unzip
+  unzip \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 COPY --from=frontend /src/internal/web/dist ./internal/web/dist
 
 ENV CGO_ENABLED=1
+ENV CC=musl-gcc
 ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
-RUN go build -ldflags "-w -s" -o build/x-ui main.go
+# -extldflags '-static' produces a fully static binary that runs
+# on Alpine (musl) even though the builder is Debian (glibc).
+RUN go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o build/x-ui main.go
 RUN ./DockerInit.sh "$TARGETARCH"
 
 # ========================================================
