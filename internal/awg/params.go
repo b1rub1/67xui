@@ -6,7 +6,6 @@ package awg
 import (
 	"crypto/rand"
 	"encoding/binary"
-	"fmt"
 	"math/big"
 )
 
@@ -95,13 +94,12 @@ func GenerateParams() (Params, error) {
 		}
 	}
 
-	// I1-I5: random-bytes segment descriptors. Sizes chosen to produce a
-	// handshake init packet that is indistinguishable from a short QUIC
-	// Initial.  All five must be set for the AWG 2.0 init chain to activate.
-	for i, fp := range []*string{&p.I1, &p.I2, &p.I3, &p.I4, &p.I5} {
-		sizes := []int{40, 15, 15, 10, 10}
-		*fp = fmt.Sprintf("<r %d>", sizes[i])
-	}
+	// I1-I5 (AWG 2.0 init-chain) are intentionally left empty.
+	// The "<r N>" descriptor format is interpreted at daemon startup to produce
+	// random bytes, but the *client* app reads the same descriptor and generates
+	// *different* random bytes — the two sides never match, so the handshake
+	// always fails. Leaving I1-I5 empty disables the init-chain (AWG 1.0 mode)
+	// which AmneziaVPN fully supports via the Jc/S/H obfuscation parameters.
 
 	return p, nil
 }
