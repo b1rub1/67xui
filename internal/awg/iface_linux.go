@@ -100,13 +100,20 @@ func bringDown(name, address string) error {
 	return nil
 }
 
-// syncPeers hot-applies the peer list to a running interface via UAPI, so
-// individual client add/remove/enable-toggle doesn't restart the interface
-// (and drop all live connections).
+// syncPeers hot-applies the peer list to a running interface via UAPI.
+// Each active peer is upserted individually — we do NOT use replace_peers=true
+// because amneziawg-go clears session state when the peer set is replaced,
+// which drops every live client connection every 10 seconds (cadenceAWG).
+// Peers that should be removed are passed via the `remove` slice and get an
+// explicit remove=true message so they are torn down cleanly.
 func syncPeers(name string, peers []PeerEntry) error {
+	return syncPeersDiff(name, peers, nil)
+}
+
+// syncPeersDiff upserts `peers` and removes `removePubKeys` from the interface.
+func syncPeersDiff(name string, peers []PeerEntry, removePubKeys []string) error {
 	sockPath := resolveUAPISocket(name)
 	if sockPath == "" {
-		// Socket not present yet — interface not up via UAPI, skip.
 		return nil
 	}
 	conn, err := net.DialTimeout("unix", sockPath, 3*time.Second)
@@ -117,10 +124,18 @@ func syncPeers(name string, peers []PeerEntry) error {
 
 	var cmd strings.Builder
 	cmd.WriteString("set=1\n")
-	// Remove peers not in the enabled list by sending remove_peer=true for
-	// any that were previously seen (the full-sync approach: send all enabled
-	// peers with replace_peers=true so UAPI replaces the set atomically).
-	cmd.WriteString("replace_peers=true\n")
+
+	// Remove peers that are no longer wanted.
+	for _, pubKey := range removePubKeys {
+		hex := hexKey(pubKey)
+		if hex == "" {
+			continue
+		}
+		fmt.Fprintf(&cmd, "public_key=%s\n", hex)
+		cmd.WriteString("remove=true\n")
+	}
+
+	// Upsert active peers without replace_peers so existing sessions survive.
 	for _, peer := range peers {
 		if !peerIsActive(peer) {
 			continue
@@ -129,6 +144,8 @@ func syncPeers(name string, peers []PeerEntry) error {
 		if peer.PreSharedKey != "" {
 			fmt.Fprintf(&cmd, "preshared_key=%s\n", hexKey(peer.PreSharedKey))
 		}
+		// Replace the allowed-IPs set for this peer.
+		cmd.WriteString("replace_allowed_ips=true\n")
 		for _, ip := range peer.AllowedIPs {
 			fmt.Fprintf(&cmd, "allowed_ip=%s\n", ip)
 		}

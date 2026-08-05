@@ -40,8 +40,9 @@ type Manager struct {
 }
 
 type runningIface struct {
-	inst Instance
-	name string // kernel interface name
+	inst        Instance
+	name        string   // kernel interface name
+	activePeers []string // public keys currently programmed into the interface
 }
 
 var globalManager = &Manager{
@@ -90,17 +91,26 @@ func (m *Manager) Reconcile(desired []Instance) error {
 			if err := syncPeers(name, inst.Settings.EffectivePeers()); err != nil {
 				logger.Warning("awg: sync-peers", name, ":", err)
 			}
-			m.running[inst.ID] = &runningIface{inst: inst, name: name}
+			m.running[inst.ID] = &runningIface{
+				inst:        inst,
+				name:        name,
+				activePeers: activePubKeys(inst.Settings.EffectivePeers()),
+			}
 		} else {
-			// Already running — ensure NAT/forwarding is present (older builds
-			// brought the iface up without PostUp) and hot-sync peers.
+			// Already running — ensure NAT/forwarding is present and sync
+			// only the diff (add/update active peers, remove disabled ones).
+			// We do NOT use replace_peers=true to preserve live sessions.
 			if inst.Settings != nil {
 				setupForwarding(ri.name, inst.Settings.Address)
 			}
-			if err := syncPeers(ri.name, inst.Settings.EffectivePeers()); err != nil {
+			newPeers := inst.Settings.EffectivePeers()
+			newKeys := activePubKeys(newPeers)
+			removed := removedKeys(ri.activePeers, newKeys)
+			if err := syncPeersDiff(ri.name, newPeers, removed); err != nil {
 				logger.Warning("awg: sync-peers", ri.name, ":", err)
 			}
 			ri.inst = inst
+			ri.activePeers = newKeys
 		}
 	}
 	return nil
@@ -153,15 +163,49 @@ func (m *Manager) Ensure(inst Instance) error {
 		if err := syncPeers(name, inst.Settings.EffectivePeers()); err != nil {
 			logger.Warning("awg: sync-peers", name, ":", err)
 		}
-		m.running[inst.ID] = &runningIface{inst: inst, name: name}
+		m.running[inst.ID] = &runningIface{
+			inst:        inst,
+			name:        name,
+			activePeers: activePubKeys(inst.Settings.EffectivePeers()),
+		}
 		return nil
 	}
-	if err := syncPeers(ri.name, inst.Settings.EffectivePeers()); err != nil {
+	newPeers := inst.Settings.EffectivePeers()
+	newKeys := activePubKeys(newPeers)
+	removed := removedKeys(ri.activePeers, newKeys)
+	if err := syncPeersDiff(ri.name, newPeers, removed); err != nil {
 		return err
 	}
 	setupForwarding(ri.name, inst.Settings.Address)
 	ri.inst = inst
+	ri.activePeers = newKeys
 	return nil
+}
+
+// activePubKeys returns the public keys of all active peers.
+func activePubKeys(peers []PeerEntry) []string {
+	keys := make([]string, 0, len(peers))
+	for _, p := range peers {
+		if peerIsActive(p) {
+			keys = append(keys, p.PublicKey)
+		}
+	}
+	return keys
+}
+
+// removedKeys returns keys that were in prev but are not in next.
+func removedKeys(prev, next []string) []string {
+	nextSet := make(map[string]struct{}, len(next))
+	for _, k := range next {
+		nextSet[k] = struct{}{}
+	}
+	var removed []string
+	for _, k := range prev {
+		if _, ok := nextSet[k]; !ok {
+			removed = append(removed, k)
+		}
+	}
+	return removed
 }
 
 // Remove tears down the AWG interface for one inbound id.
