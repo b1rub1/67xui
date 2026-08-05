@@ -1,5 +1,6 @@
 import { RandomUtil, Wireguard } from '@/utils';
 
+import type { AmneziaWGInboundSettings } from '@/schemas/protocols/inbound/amneziawg';
 import type { HttpInboundSettings } from '@/schemas/protocols/inbound/http';
 import type { HysteriaClient, HysteriaInboundSettings } from '@/schemas/protocols/inbound/hysteria';
 import type { MixedInboundSettings } from '@/schemas/protocols/inbound/mixed';
@@ -279,7 +280,37 @@ export function createDefaultWireguardInboundSettings(
 // returns a plain Zod-parsable object instead of a class instance.
 // Callers swapping off the class hierarchy use this in place of
 // `getSettings(p)` + `.toJson()`.
+export function createDefaultAmneziaWGInboundSettings(): AmneziaWGInboundSettings {
+  const rand32 = () => Math.floor(Math.random() * 0xFFFFFF) + 5;
+  return {
+    secretKey: Wireguard.generateKeypair().privateKey,
+    address: '10.66.0.1/24',
+    mtu: 1420,
+    dns: '1.1.1.1',
+    params: {
+      jc:   4,
+      jmin: 50,
+      jmax: 1000,
+      s1:   56,
+      s2:   56,
+      s3:   10,
+      s4:   2,
+      h1:   rand32(),
+      h2:   rand32(),
+      h3:   rand32(),
+      h4:   rand32(),
+      i1:   '<r 40>',
+      i2:   '<r 40>',
+      i3:   '<r 0>',
+      i4:   '<r 0>',
+      i5:   '<r 0>',
+    },
+    clients: [],
+  };
+}
+
 export type AnyInboundSettings =
+  | AmneziaWGInboundSettings
   | VlessInboundSettings
   | VmessInboundSettings
   | TrojanInboundSettings
@@ -294,6 +325,7 @@ export type AnyInboundSettings =
 
 export function createDefaultInboundSettings(protocol: string): AnyInboundSettings | null {
   switch (protocol) {
+    case 'amneziawg':   return createDefaultAmneziaWGInboundSettings();
     case 'vless':       return createDefaultVlessInboundSettings();
     case 'vmess':       return createDefaultVmessInboundSettings();
     case 'trojan':      return createDefaultTrojanInboundSettings();
