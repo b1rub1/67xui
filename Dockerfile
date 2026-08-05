@@ -10,7 +10,28 @@ COPY internal/web/translation /src/internal/web/translation
 RUN npm run build
 
 # ========================================================
-# Stage: Builder
+# Stage: Build AmneziaWG userspace tools
+# amneziawg-tools is a fork of wireguard-tools. It builds
+# 'awg' (config binary) and 'awg-quick' (bash script).
+# The host kernel must have the amneziawg module loaded;
+# the container only needs the userspace tools.
+# ========================================================
+FROM alpine AS awg-tools
+RUN apk add --no-cache \
+  build-base \
+  git \
+  bash \
+  libmnl-dev \
+  elfutils-dev
+RUN git clone --depth=1 https://github.com/amnezia-vpn/amneziawg-tools.git /awg-tools
+WORKDIR /awg-tools/src
+# wireguard-tools Makefile outputs the binary in src/ and the
+# quick script in src/wg-quick/ (renamed awg-quick/ in this fork).
+RUN make
+RUN ls -la && ls -la awg-quick/ 2>/dev/null || ls -la wg-quick/ 2>/dev/null || true
+
+# ========================================================
+# Stage: Builder (Go binary)
 # ========================================================
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
@@ -31,7 +52,7 @@ RUN go build -ldflags "-w -s" -o build/x-ui main.go
 RUN ./DockerInit.sh "$TARGETARCH"
 
 # ========================================================
-# Stage: Final Image of 3x-ui
+# Stage: Final Image
 # ========================================================
 FROM alpine
 ENV TZ=Asia/Tehran
@@ -43,13 +64,25 @@ RUN apk add --no-cache --update \
   fail2ban \
   bash \
   curl \
-  openssl
+  openssl \
+  iproute2 \
+  iptables \
+  ip6tables \
+  wireguard-tools-wg-quick
+
+# Copy AWG userspace tools built from source.
+# 'awg' is the config tool (analogous to wg).
+# 'awg-quick' is a bash script (analogous to wg-quick); it calls awg + ip.
+# awg binary lives in src/ after make; awg-quick is the bash script
+# in src/awg-quick/ (fork renamed the wg-quick/ dir to awg-quick/).
+COPY --from=awg-tools /awg-tools/src/awg /usr/local/bin/awg
+COPY --from=awg-tools /awg-tools/src/awg-quick/linux.bash /usr/local/bin/awg-quick
+RUN chmod +x /usr/local/bin/awg /usr/local/bin/awg-quick
 
 COPY --from=builder /app/build/ /app/
 COPY --from=builder /app/DockerEntrypoint.sh /app/
 COPY --from=builder /app/x-ui.sh /usr/bin/x-ui
 COPY --from=builder /app/internal/web/translation /app/internal/web/translation
-
 
 # Configure fail2ban
 RUN rm -f /etc/fail2ban/jail.d/alpine-ssh.conf \
