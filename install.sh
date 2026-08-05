@@ -123,6 +123,50 @@ install_base() {
     esac
 }
 
+# Install AmneziaWG kernel module and tools (required for AWG inbounds).
+# Tries the official Amnezia PPA first; falls back to a soft warning if
+# the distro is unsupported — the panel will still start and serve all
+# Xray protocols, but AWG interfaces won't come up until awg is installed.
+install_awg() {
+    echo -e "${blue}Installing AmneziaWG...${plain}"
+    case "${release}" in
+        ubuntu | debian | armbian)
+            # Official Amnezia PPA ships kernel module + userspace tools.
+            if ! add-apt-repository -y ppa:amnezia/ppa 2>/dev/null; then
+                echo -e "${yellow}Amnezia PPA not available for this distro — trying direct package install${plain}"
+            fi
+            apt-get update -qq
+            if apt-get install -y -q amneziawg amneziawg-tools 2>/dev/null; then
+                echo -e "${green}AmneziaWG installed successfully${plain}"
+            else
+                echo -e "${yellow}Warning: Could not install amneziawg from PPA.${plain}"
+                echo -e "${yellow}AWG inbounds will not work until you install it manually:${plain}"
+                echo -e "${yellow}  https://github.com/amnezia-vpn/amnezia-wg${plain}"
+            fi
+            ;;
+        fedora | centos | rhel | almalinux | rocky | ol)
+            if dnf install -y -q amneziawg-tools 2>/dev/null; then
+                echo -e "${green}AmneziaWG tools installed${plain}"
+            else
+                echo -e "${yellow}Warning: amneziawg-tools not found in repos. Install manually:${plain}"
+                echo -e "${yellow}  https://github.com/amnezia-vpn/amnezia-wg${plain}"
+            fi
+            ;;
+        arch | manjaro | parch)
+            if pacman -Sy --noconfirm amneziawg-tools 2>/dev/null; then
+                echo -e "${green}AmneziaWG tools installed${plain}"
+            else
+                echo -e "${yellow}Warning: amneziawg-tools not found. Try: yay -S amneziawg-dkms${plain}"
+            fi
+            ;;
+        *)
+            echo -e "${yellow}AWG auto-install is not supported on ${release}.${plain}"
+            echo -e "${yellow}AWG inbounds will not work until amneziawg is installed manually:${plain}"
+            echo -e "${yellow}  https://github.com/amnezia-vpn/amnezia-wg${plain}"
+            ;;
+    esac
+}
+
 gen_random_string() {
     local length="$1"
     openssl rand -base64 $((length * 2)) \
@@ -1416,13 +1460,13 @@ install_x-ui() {
 
     # Download resources
     if [ $# == 0 ]; then
-        tag_version=$(curl -Ls --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://api.github.com/repos/MHSanaei/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        tag_version=$(curl -Ls --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 60 "https://api.github.com/repos/b1rub1/67xui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$tag_version" ]]; then
             echo -e "${red}Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later${plain}"
             exit 1
         fi
         echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
-        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
+        curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz https://github.com/b1rub1/67xui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
         if [[ $? -ne 0 ]]; then
             echo -e "${red}Downloading x-ui failed, please be sure that your server can access GitHub ${plain}"
             exit 1
@@ -1450,7 +1494,7 @@ install_x-ui() {
             fi
         fi
 
-        url="https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz"
+        url="https://github.com/b1rub1/67xui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz"
         echo -e "Beginning to install x-ui ${tag_version}"
         curl -fLR --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 -o ${xui_folder}-linux-$(arch).tar.gz ${url}
         if [[ $? -ne 0 ]]; then
@@ -1465,7 +1509,7 @@ install_x-ui() {
     fi
     local xui_script_temp="/usr/bin/x-ui-temp.$$"
     rm -f "${xui_script_temp}"
-    curl -fLRo "${xui_script_temp}" https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.sh
+    curl -fLRo "${xui_script_temp}" https://raw.githubusercontent.com/b1rub1/67xui/main/x-ui.sh
     if [[ $? -ne 0 ]]; then
         rm -f "${xui_script_temp}"
         echo -e "${red}Failed to download x-ui.sh${plain}"
@@ -1557,7 +1601,7 @@ install_x-ui() {
     if [[ $release == "alpine" ]]; then
         xui_rc_temp="/etc/init.d/x-ui.tmp.$$"
         rm -f "${xui_rc_temp}"
-        curl -fLRo "${xui_rc_temp}" https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.rc
+        curl -fLRo "${xui_rc_temp}" https://raw.githubusercontent.com/b1rub1/67xui/main/x-ui.rc
         if [[ $? -ne 0 ]]; then
             rm -f "${xui_rc_temp}"
             echo -e "${red}Failed to download x-ui.rc${plain}"
@@ -1622,13 +1666,13 @@ install_x-ui() {
             echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
             case "${release}" in
                 ubuntu | debian | armbian)
-                    service_unit_url="https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.service.debian"
+                    service_unit_url="https://raw.githubusercontent.com/b1rub1/67xui/main/x-ui.service.debian"
                     ;;
                 arch | manjaro | parch)
-                    service_unit_url="https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.service.arch"
+                    service_unit_url="https://raw.githubusercontent.com/b1rub1/67xui/main/x-ui.service.arch"
                     ;;
                 *)
-                    service_unit_url="https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.service.rhel"
+                    service_unit_url="https://raw.githubusercontent.com/b1rub1/67xui/main/x-ui.service.rhel"
                     ;;
             esac
 
@@ -1680,4 +1724,5 @@ install_x-ui() {
 
 echo -e "${green}Running...${plain}"
 install_base
+install_awg
 install_x-ui $1
