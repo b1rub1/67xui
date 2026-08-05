@@ -925,6 +925,9 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	if err := s.normalizeMtprotoXrayPort(inbound, ""); err != nil {
 		return inbound, false, err
 	}
+	if err := prepareAWGClients(inbound); err != nil {
+		return inbound, false, err
+	}
 	inbound.SubSortIndex = normalizeSubSortIndex(inbound.SubSortIndex)
 	if err := normalizeInboundShareAddressStrict(inbound); err != nil {
 		return inbound, false, err
@@ -1077,12 +1080,14 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 				if push {
 					payload := inbound
 					pushable := true
-					if inbound.Protocol == model.MTProto {
-						if built, bErr := s.buildInboundForLocalRuntime(tx, inbound); bErr == nil {
-							payload = built
-						} else {
-							logger.Debug("Unable to prepare runtime inbound config:", bErr)
-							pushable = false
+					if inbound.Protocol == model.MTProto || inbound.Protocol == model.AmneziaWG {
+						if inbound.Protocol == model.MTProto {
+							if built, bErr := s.buildInboundForLocalRuntime(tx, inbound); bErr == nil {
+								payload = built
+							} else {
+								logger.Debug("Unable to prepare runtime inbound config:", bErr)
+								pushable = false
+							}
 						}
 					}
 					if pushable {
@@ -1091,7 +1096,9 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 								logger.Debug("New inbound added on", rt.Name(), ":", inbound.Tag)
 							} else {
 								logger.Debug("Unable to add inbound on", rt.Name(), ":", err1)
-								needRestart = true
+								if inbound.Protocol != model.AmneziaWG {
+									needRestart = true
+								}
 							}
 						}
 					}
@@ -1349,6 +1356,9 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		return inbound, false, err
 	}
 	s.normalizeMtprotoSecret(inbound)
+	if err := prepareAWGClients(inbound); err != nil {
+		return inbound, false, err
+	}
 	inbound.SubSortIndex = normalizeSubSortIndex(inbound.SubSortIndex)
 
 	oldInbound, err := s.GetInbound(inbound.Id)
@@ -1504,28 +1514,31 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 			}
 			if !push {
 				needRestart = true
-			} else if oldProtocol == model.MTProto || oldInbound.Protocol == model.MTProto {
+			} else if oldProtocol == model.MTProto || oldInbound.Protocol == model.MTProto ||
+				oldProtocol == model.AmneziaWG || oldInbound.Protocol == model.AmneziaWG {
 				oldSnapshot := *oldInbound
 				oldSnapshot.Tag = tag
 				oldSnapshot.Protocol = oldProtocol
 				payload := oldInbound
 				pushable := true
 				if inbound.Enable {
-					if built, err2 := s.buildInboundForLocalRuntime(tx, oldInbound); err2 == nil {
-						payload = built
-					} else {
-						logger.Debug("Unable to prepare runtime inbound config:", err2)
-						pushable = false
+					if oldInbound.Protocol == model.MTProto {
+						if built, err2 := s.buildInboundForLocalRuntime(tx, oldInbound); err2 == nil {
+							payload = built
+						} else {
+							logger.Debug("Unable to prepare runtime inbound config:", err2)
+							pushable = false
+						}
 					}
 				}
-				newProtocolIsMtproto := oldInbound.Protocol == model.MTProto
+				newProtocolIsSidecar := oldInbound.Protocol == model.MTProto || oldInbound.Protocol == model.AmneziaWG
 				if pushable {
 					postCommitApply = func() {
 						if err2 := rt.UpdateInbound(context.Background(), &oldSnapshot, payload); err2 == nil {
 							logger.Debug("Updated inbound applied on", rt.Name(), ":", oldInbound.Tag)
 						} else {
 							logger.Debug("Unable to update inbound on", rt.Name(), ":", err2)
-							if !newProtocolIsMtproto {
+							if !newProtocolIsSidecar {
 								needRestart = true
 							}
 						}

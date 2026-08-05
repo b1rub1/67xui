@@ -17,6 +17,9 @@ const defaultAWGBase = "10.66.0.0/24"
 // called from the generic inbound-save path exactly like
 // prepareWireguardClients is for WireGuard.
 func prepareAWGClients(inbound *model.Inbound) error {
+	if inbound == nil || inbound.Protocol != model.AmneziaWG {
+		return nil
+	}
 	var settings awg.Settings
 	if err := json.Unmarshal([]byte(inbound.Settings), &settings); err != nil {
 		return common.NewError("awg: cannot parse settings:", err)

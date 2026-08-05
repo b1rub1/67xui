@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/awg"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/mtproto"
 	"github.com/mhsanaei/3x-ui/v3/internal/xray"
@@ -53,6 +54,13 @@ func (l *Local) AddInbound(_ context.Context, ib *model.Inbound) error {
 		}
 		return mtproto.GetManager().Ensure(inst)
 	}
+	if ib.Protocol == model.AmneziaWG {
+		inst, ok := awg.InstanceFromInbound(ib)
+		if !ok {
+			return nil
+		}
+		return awg.GetManager().Ensure(inst)
+	}
 	body, err := json.MarshalIndent(ib.GenXrayInboundConfig(), "", "  ")
 	if err != nil {
 		return err
@@ -67,6 +75,10 @@ func (l *Local) DelInbound(_ context.Context, ib *model.Inbound) error {
 		mtproto.GetManager().Remove(ib.Id)
 		return nil
 	}
+	if ib.Protocol == model.AmneziaWG {
+		awg.GetManager().Remove(ib.Id)
+		return nil
+	}
 	return l.withAPI(func(api *xray.XrayAPI) error {
 		return api.DelInbound(ib.Tag)
 	})
@@ -75,6 +87,9 @@ func (l *Local) DelInbound(_ context.Context, ib *model.Inbound) error {
 func (l *Local) UpdateInbound(ctx context.Context, oldIb, newIb *model.Inbound) error {
 	if oldIb.Protocol == model.MTProto || newIb.Protocol == model.MTProto {
 		return l.updateMtprotoInbound(ctx, oldIb, newIb)
+	}
+	if oldIb.Protocol == model.AmneziaWG || newIb.Protocol == model.AmneziaWG {
+		return l.updateAWGInbound(ctx, oldIb, newIb)
 	}
 	_ = l.DelInbound(ctx, oldIb)
 	if !newIb.Enable {
@@ -112,8 +127,31 @@ func (l *Local) updateMtprotoInbound(ctx context.Context, oldIb, newIb *model.In
 	return mtproto.GetManager().Ensure(inst)
 }
 
+func (l *Local) updateAWGInbound(ctx context.Context, oldIb, newIb *model.Inbound) error {
+	if oldIb.Protocol == model.AmneziaWG && newIb.Protocol != model.AmneziaWG {
+		awg.GetManager().Remove(oldIb.Id)
+		if !newIb.Enable {
+			return nil
+		}
+		return l.AddInbound(ctx, newIb)
+	}
+	if oldIb.Protocol != model.AmneziaWG {
+		_ = l.DelInbound(ctx, oldIb)
+	}
+	if !newIb.Enable {
+		awg.GetManager().Remove(newIb.Id)
+		return nil
+	}
+	inst, ok := awg.InstanceFromInbound(newIb)
+	if !ok {
+		awg.GetManager().Remove(newIb.Id)
+		return nil
+	}
+	return awg.GetManager().Ensure(inst)
+}
+
 func (l *Local) AddUser(_ context.Context, ib *model.Inbound, userMap map[string]any) error {
-	if ib.Protocol == model.MTProto {
+	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG {
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {
@@ -122,7 +160,7 @@ func (l *Local) AddUser(_ context.Context, ib *model.Inbound, userMap map[string
 }
 
 func (l *Local) RemoveUser(_ context.Context, ib *model.Inbound, email string) error {
-	if ib.Protocol == model.MTProto {
+	if ib.Protocol == model.MTProto || ib.Protocol == model.AmneziaWG {
 		return nil
 	}
 	return l.withAPI(func(api *xray.XrayAPI) error {

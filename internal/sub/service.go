@@ -691,6 +691,18 @@ func (s *SubService) genAmneziaWGLink(inbound *model.Inbound, email string) stri
 		return ""
 	}
 
+	// Derive the server public key from the private key when settings.PublicKey
+	// is missing (older inbounds, or prepareAWGClients never ran). Without it
+	// the client conf ships an empty PublicKey and AWG clients reject the peer.
+	if settings.PublicKey == "" && settings.SecretKey != "" {
+		if pub, err := wgutil.PublicKeyFromPrivate(settings.SecretKey); err == nil {
+			settings.PublicKey = pub
+		}
+	}
+	if settings.PublicKey == "" {
+		return ""
+	}
+
 	peer := awgPeerEntry{
 		PrivateKey:   resolved.PrivateKey,
 		PublicKey:    resolved.PublicKey,

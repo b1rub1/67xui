@@ -1,10 +1,13 @@
 package awg
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
+	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
+	wgutil "github.com/mhsanaei/3x-ui/v3/internal/util/wireguard"
 )
 
 // Instance describes the desired runtime state of one AWG interface.
@@ -118,4 +121,74 @@ func (m *Manager) ApplyPeers(id int, peers []PeerEntry) error {
 		return fmt.Errorf("awg: inbound %d is not running", id)
 	}
 	return syncPeers(ri.name, peers)
+}
+
+// Ensure brings up (or hot-reconfigures) a single AWG instance without
+// touching other running interfaces. Symmetric with mtproto.Manager.Ensure.
+func (m *Manager) Ensure(inst Instance) error {
+	if inst.Settings == nil {
+		return fmt.Errorf("awg: inbound %d has no settings", inst.ID)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ri, running := m.running[inst.ID]
+	if !running {
+		name := inst.ifaceName()
+		if err := bringUp(name, inst.Port, inst.Listen, inst.Settings); err != nil {
+			return err
+		}
+		if err := syncPeers(name, inst.Settings.EffectivePeers()); err != nil {
+			logger.Warning("awg: sync-peers", name, ":", err)
+		}
+		m.running[inst.ID] = &runningIface{inst: inst, name: name}
+		return nil
+	}
+	if err := syncPeers(ri.name, inst.Settings.EffectivePeers()); err != nil {
+		return err
+	}
+	ri.inst = inst
+	return nil
+}
+
+// Remove tears down the AWG interface for one inbound id.
+func (m *Manager) Remove(id int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ri, ok := m.running[id]
+	if !ok {
+		return
+	}
+	if err := bringDown(ri.name); err != nil {
+		logger.Warning("awg: remove bring-down", ri.name, ":", err)
+	}
+	delete(m.running, id)
+}
+
+// InstanceFromInbound derives a desired Instance from an amneziawg inbound.
+// Returns false when the inbound is not AWG or settings are unparseable.
+func InstanceFromInbound(ib *model.Inbound) (Instance, bool) {
+	if ib == nil || ib.Protocol != model.AmneziaWG {
+		return Instance{}, false
+	}
+	var settings Settings
+	if err := json.Unmarshal([]byte(ib.Settings), &settings); err != nil {
+		return Instance{}, false
+	}
+	if settings.SecretKey == "" {
+		return Instance{}, false
+	}
+	if settings.PublicKey == "" {
+		if pub, err := wgutil.PublicKeyFromPrivate(settings.SecretKey); err == nil {
+			settings.PublicKey = pub
+		}
+	}
+	return Instance{
+		ID:       ib.Id,
+		Tag:      ib.Tag,
+		Listen:   ib.Listen,
+		Port:     ib.Port,
+		Settings: &settings,
+		NodeID:   ib.NodeID,
+	}, true
 }

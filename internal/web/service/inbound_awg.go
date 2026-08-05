@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/awg"
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
@@ -28,7 +27,7 @@ func (s *InboundService) DesiredAWGInstances() ([]awg.Instance, error) {
 
 	instances := make([]awg.Instance, 0, len(inbounds))
 	for _, ib := range inbounds {
-		inst, ok := awgInstanceFromInbound(ib)
+		inst, ok := awg.InstanceFromInbound(ib)
 		if !ok {
 			continue
 		}
@@ -37,26 +36,9 @@ func (s *InboundService) DesiredAWGInstances() ([]awg.Instance, error) {
 	return instances, nil
 }
 
-// awgInstanceFromInbound parses an AWG inbound row into an awg.Instance.
-// Returns false when settings are unparseable so the caller can skip quietly.
-func awgInstanceFromInbound(ib *model.Inbound) (awg.Instance, bool) {
-	var settings awg.Settings
-	if err := json.Unmarshal([]byte(ib.Settings), &settings); err != nil {
-		logger.Warning("awg: parse settings for inbound", ib.Id, ":", err)
-		return awg.Instance{}, false
-	}
-	return awg.Instance{
-		ID:       ib.Id,
-		Tag:      ib.Tag,
-		Listen:   ib.Listen,
-		Port:     ib.Port,
-		Settings: &settings,
-	}, true
-}
-
-// applyLocalAWG hot-syncs the peer list of one local AWG inbound immediately
+// applyLocalAWG hot-syncs (or brings up) one local AWG inbound immediately
 // after a client edit commits, without waiting for the reconcile cron job.
-func (s *InboundService) applyLocalAWG(ctx context.Context, inboundID int) {
+func (s *InboundService) applyLocalAWG(_ context.Context, inboundID int) {
 	db := database.GetDB()
 	var ib model.Inbound
 	if err := db.First(&ib, inboundID).Error; err != nil {
@@ -66,12 +48,11 @@ func (s *InboundService) applyLocalAWG(ctx context.Context, inboundID int) {
 	if ib.Protocol != model.AmneziaWG || !ib.Enable || ib.NodeID != nil {
 		return
 	}
-	var settings awg.Settings
-	if err := json.Unmarshal([]byte(ib.Settings), &settings); err != nil {
-		logger.Warning("awg: parse settings for hot-apply:", err)
+	inst, ok := awg.InstanceFromInbound(&ib)
+	if !ok {
 		return
 	}
-	if err := awg.GetManager().ApplyPeers(inboundID, settings.EffectivePeers()); err != nil {
-		logger.Warning("awg: hot-apply peers for inbound", inboundID, ":", err)
+	if err := awg.GetManager().Ensure(inst); err != nil {
+		logger.Warning("awg: hot-apply for inbound", inboundID, ":", err)
 	}
 }
