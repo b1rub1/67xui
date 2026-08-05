@@ -56,16 +56,22 @@ func prepareAWGClients(inbound *model.Inbound) error {
 	}
 
 	// Collect already-used client IPs for allocation.
-	used := make([]string, 0, len(settings.Peers))
-	for _, p := range settings.Peers {
+	used := make([]string, 0, len(settings.Clients)+len(settings.Peers))
+	for _, p := range settings.EffectivePeers() {
 		for _, ip := range p.AllowedIPs {
 			used = append(used, ip)
 		}
 	}
 
+	// Prefer the panel "clients" array; migrate legacy "peers" into it once.
+	peers := settings.Clients
+	if len(peers) == 0 && len(settings.Peers) > 0 {
+		peers = settings.Peers
+	}
+
 	// Fill in missing keys and IPs for each peer.
-	for i := range settings.Peers {
-		peer := &settings.Peers[i]
+	for i := range peers {
+		peer := &peers[i]
 
 		if peer.PrivateKey == "" && peer.PublicKey == "" {
 			priv, pub, err := wgutil.GenerateWireguardKeypair()
@@ -92,6 +98,9 @@ func prepareAWGClients(inbound *model.Inbound) error {
 		}
 		used = append(used, peer.AllowedIPs...)
 	}
+
+	settings.Clients = peers
+	settings.Peers = nil
 
 	raw, err := json.Marshal(settings)
 	if err != nil {

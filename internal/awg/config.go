@@ -19,11 +19,22 @@ type Settings struct {
 
 	Params Params `json:"params"` // AWG 2.0 obfuscation parameters
 
-	// Peers is the list of client entries stored inline in settings, following
-	// the same pattern as the WireGuard inbound in 3x-ui. This slice is
-	// serialised as the "peers" JSON array and used both when writing the server
-	// interface config and when generating per-client .conf files.
-	Peers []PeerEntry `json:"peers"`
+	// Clients is the panel source of truth (same shape as WireGuard /
+	// VLESS / …). Peers is kept for backward compatibility with older
+	// settings JSON that stored the list under "peers"; EffectivePeers
+	// prefers Clients when present.
+	Clients []PeerEntry `json:"clients"`
+	Peers   []PeerEntry `json:"peers"`
+}
+
+// EffectivePeers returns the peer list that should be applied to the
+// running interface. The panel always writes under "clients"; older
+// installs may still have "peers".
+func (s *Settings) EffectivePeers() []PeerEntry {
+	if len(s.Clients) > 0 {
+		return s.Clients
+	}
+	return s.Peers
 }
 
 // PeerEntry is one client/peer stored inside Settings.Peers.

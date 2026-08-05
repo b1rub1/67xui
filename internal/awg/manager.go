@@ -80,13 +80,13 @@ func (m *Manager) Reconcile(desired []Instance) error {
 				logger.Warning("awg: bring-up", name, ":", err)
 				continue
 			}
-			if err := syncPeers(name, inst.Settings.Peers); err != nil {
+			if err := syncPeers(name, inst.Settings.EffectivePeers()); err != nil {
 				logger.Warning("awg: sync-peers", name, ":", err)
 			}
 			m.running[inst.ID] = &runningIface{inst: inst, name: name}
 		} else {
 			// Already running — hot-sync peers without restarting.
-			if err := syncPeers(ri.name, inst.Settings.Peers); err != nil {
+			if err := syncPeers(ri.name, inst.Settings.EffectivePeers()); err != nil {
 				logger.Warning("awg: sync-peers", ri.name, ":", err)
 			}
 			ri.inst = inst

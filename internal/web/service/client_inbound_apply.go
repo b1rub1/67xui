@@ -362,6 +362,11 @@ func (s *ClientService) addInboundClient(inboundSvc *InboundService, data *model
 			return false, dErr
 		}
 	}
+	if oldInbound.Protocol == model.AmneziaWG {
+		if dErr := defaultAWGClients(existingClients, clients, interfaceClients); dErr != nil {
+			return false, dErr
+		}
+	}
 
 	for _, client := range clients {
 		if strings.TrimSpace(client.Email) == "" {
@@ -469,6 +474,8 @@ func (s *ClientService) addInboundClient(inboundSvc *InboundService, data *model
 			needRestart = true
 		} else if oldInbound.Protocol == model.MTProto {
 			inboundSvc.applyLocalMtproto(oldInbound.Id)
+		} else if oldInbound.Protocol == model.AmneziaWG {
+			inboundSvc.applyLocalAWG(context.Background(), oldInbound.Id)
 		} else {
 			for _, client := range clients {
 				if len(client.Email) == 0 {
@@ -602,11 +609,15 @@ func (s *ClientService) UpdateInboundClient(inboundSvc *InboundService, data *mo
 		}
 	}
 
-	// WireGuard keys are never rotated by an edit: when the incoming payload omits
-	// them (a metadata-only change), carry the stored credentials forward so the
-	// settings JSON and the running peer keep the client's identity.
-	if oldInbound.Protocol == model.WireGuard && clientIndex >= 0 && clientIndex < len(oldClients) {
+	// WireGuard / AmneziaWG keys are never rotated by an edit: when the incoming
+	// payload omits them (a metadata-only change), carry the stored credentials
+	// forward so the settings JSON and the running peer keep the client's identity.
+	if (oldInbound.Protocol == model.WireGuard || oldInbound.Protocol == model.AmneziaWG) && clientIndex >= 0 && clientIndex < len(oldClients) {
 		old := oldClients[clientIndex]
+		protoLabel := "wireguard"
+		if oldInbound.Protocol == model.AmneziaWG {
+			protoLabel = "amneziawg"
+		}
 		if clients[0].PrivateKey == "" {
 			clients[0].PrivateKey = old.PrivateKey
 		}
@@ -631,7 +642,7 @@ func (s *ClientService) UpdateInboundClient(inboundSvc *InboundService, data *mo
 					peers = append(peers, oldClients[i].AllowedIPs...)
 				}
 				if hit := wireguardAllowedIPsCollision(normalized, peers); hit != "" {
-					return false, common.NewError("wireguard: allowedIPs entry already used by another client:", hit)
+					return false, common.NewError(protoLabel+": allowedIPs entry already used by another client:", hit)
 				}
 				clients[0].AllowedIPs = normalized
 			}
@@ -849,6 +860,8 @@ func (s *ClientService) UpdateInboundClient(inboundSvc *InboundService, data *mo
 				needRestart = true
 			} else if oldInbound.Protocol == model.MTProto {
 				inboundSvc.applyLocalMtproto(oldInbound.Id)
+			} else if oldInbound.Protocol == model.AmneziaWG {
+				inboundSvc.applyLocalAWG(context.Background(), oldInbound.Id)
 			} else {
 				if oldClients[clientIndex].Enable {
 					err1 := rt.RemoveUser(context.Background(), oldInbound, oldEmail)
@@ -1030,6 +1043,8 @@ func (s *ClientService) DelInboundClientByEmail(inboundSvc *InboundService, inbo
 				// it (removing the last client stops the sidecar) regardless of the
 				// client's enable state.
 				inboundSvc.applyLocalMtproto(oldInbound.Id)
+			} else if oldInbound.Protocol == model.AmneziaWG {
+				inboundSvc.applyLocalAWG(context.Background(), oldInbound.Id)
 			} else if needApiDel {
 				// Local inbound: a disabled client isn't in the running Xray, so only
 				// a live one (needApiDel) needs an API removal.

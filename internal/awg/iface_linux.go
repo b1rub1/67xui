@@ -37,7 +37,7 @@ func bringUp(name string, port int, listen string, settings *Settings) error {
 	// Write all enabled peers into the server conf so awg-quick can apply them.
 	var b strings.Builder
 	b.WriteString(serverConf)
-	for _, peer := range settings.Peers {
+	for _, peer := range settings.EffectivePeers() {
 		if !peer.Enable {
 			continue
 		}

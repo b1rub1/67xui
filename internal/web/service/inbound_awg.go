@@ -71,7 +71,7 @@ func (s *InboundService) applyLocalAWG(ctx context.Context, inboundID int) {
 		logger.Warning("awg: parse settings for hot-apply:", err)
 		return
 	}
-	if err := awg.GetManager().ApplyPeers(inboundID, settings.Peers); err != nil {
+	if err := awg.GetManager().ApplyPeers(inboundID, settings.EffectivePeers()); err != nil {
 		logger.Warning("awg: hot-apply peers for inbound", inboundID, ":", err)
 	}
 }

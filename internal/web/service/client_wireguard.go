@@ -128,11 +128,22 @@ func wireguardAllowedIPsCollision(entries, used []string) string {
 // maps that get persisted into the inbound settings. Existing values are never
 // overwritten, so editing a client never rotates its keys.
 func defaultWireguardClients(existing, clients []model.Client, interfaceClients []any) error {
+	return defaultTunnelClients(existing, clients, interfaceClients, defaultWireguardBase, "wireguard")
+}
+
+// defaultAWGClients is the AmneziaWG counterpart of defaultWireguardClients —
+// same Curve25519 keypair / AllowedIPs allocation, but from the AWG default
+// tunnel subnet (10.66.0.0/24).
+func defaultAWGClients(existing, clients []model.Client, interfaceClients []any) error {
+	return defaultTunnelClients(existing, clients, interfaceClients, defaultAWGBase, "amneziawg")
+}
+
+func defaultTunnelClients(existing, clients []model.Client, interfaceClients []any, fallbackBase, protoLabel string) error {
 	used := make([]string, 0)
 	for i := range existing {
 		used = append(used, existing[i].AllowedIPs...)
 	}
-	base := wireguardAllocationBase(used, defaultWireguardBase)
+	base := wireguardAllocationBase(used, fallbackBase)
 	for i := range clients {
 		c := &clients[i]
 		if c.PrivateKey == "" && c.PublicKey == "" {
@@ -161,10 +172,10 @@ func defaultWireguardClients(existing, clients []model.Client, interfaceClients 
 				return err
 			}
 			if len(normalized) == 0 {
-				return common.NewError("wireguard: allowedIPs has no usable entry")
+				return common.NewError(protoLabel + ": allowedIPs has no usable entry")
 			}
 			if hit := wireguardAllowedIPsCollision(normalized, used); hit != "" {
-				return common.NewError("wireguard: allowedIPs entry already used by another client:", hit)
+				return common.NewError(protoLabel+": allowedIPs entry already used by another client:", hit)
 			}
 			c.AllowedIPs = normalized
 		}
