@@ -1008,6 +1008,7 @@ export default function InboundFormModal({
                 Protocols.TUNNEL,
                 Protocols.TUN,
                 Protocols.WIREGUARD,
+                Protocols.AMNEZIAWG,
                 Protocols.MTPROTO,
               ] as string[]).includes(protocol) || isFallbackHost
                 ? [{ key: 'protocol', label: t('pages.inbounds.protocol'), children: protocolTab, forceRender: true }]
@@ -1015,7 +1016,7 @@ export default function InboundFormModal({
               ...(streamEnabled
                 ? [
                   { key: 'stream', label: t('pages.inbounds.streamTab'), children: streamTab, forceRender: true },
-                  ...(protocol !== Protocols.WIREGUARD && protocol !== Protocols.TUNNEL
+                  ...(protocol !== Protocols.WIREGUARD && protocol !== Protocols.TUNNEL && protocol !== Protocols.AMNEZIAWG
                     ? [{ key: 'security', label: t('pages.inbounds.securityTab'), children: securityTab, forceRender: true }]
                     : []),
                 ]

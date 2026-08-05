@@ -1076,6 +1076,8 @@ export function getInboundClients(inbound: Inbound): ClientShape[] | null {
       return (inbound.settings.clients ?? []) as ClientShape[];
     case 'mtproto':
       return (inbound.settings.clients ?? []) as ClientShape[];
+    case 'amneziawg':
+      return (inbound.settings.clients ?? []) as ClientShape[];
     case 'shadowsocks': {
       const isMultiUser = inbound.settings.method !== '2022-blake3-chacha20-poly1305';
       return isMultiUser ? ((inbound.settings.clients ?? []) as ClientShape[]) : null;
@@ -1140,6 +1142,49 @@ export function genLink(input: GenLinkInput): string {
       });
     case 'mtproto':
       return genMtprotoLink({ inbound, address, port, clientSecret: client.secret ?? '' });
+    case 'amneziawg': {
+      // AWG share links require the client's private key which is stored in
+      // settings.clients[].privateKey by the backend. If present, build a
+      // minimal amneziawg:// URI so the peer config can be exported from the
+      // panel. The subscription endpoint on the backend produces the full link.
+      const awgSettings = inbound.settings as Record<string, unknown>;
+      const awgParams = (awgSettings.params ?? {}) as Record<string, unknown>;
+      const serverPubKey = typeof awgSettings.secretKey === 'string' && awgSettings.secretKey.length > 0
+        ? Wireguard.generateKeypair(awgSettings.secretKey).publicKey
+        : '';
+      const peerPrivKey = (client as Record<string, unknown>).privateKey as string | undefined;
+      if (!peerPrivKey) return '';
+      const peerPubKey = peerPrivKey.length > 0 ? Wireguard.generateKeypair(peerPrivKey).publicKey : '';
+      const allowedIPs = ((client as Record<string, unknown>).allowedIPs as string[] | undefined ?? []).join(',') || '10.66.0.0/24';
+      const dns = typeof awgSettings.dns === 'string' ? awgSettings.dns : '1.1.1.1';
+      const mtu = typeof awgSettings.mtu === 'number' ? awgSettings.mtu : 1420;
+      const url = new URL(`amneziawg://${formatUrlHost(address)}:${port}`);
+      url.username = peerPrivKey;
+      const sp = url.searchParams;
+      if (serverPubKey) sp.set('publickey', serverPubKey);
+      sp.set('address', allowedIPs);
+      sp.set('dns', dns);
+      sp.set('mtu', String(mtu));
+      if (awgParams.jc != null) sp.set('jc', String(awgParams.jc));
+      if (awgParams.jmin != null) sp.set('jmin', String(awgParams.jmin));
+      if (awgParams.jmax != null) sp.set('jmax', String(awgParams.jmax));
+      if (awgParams.s1 != null) sp.set('s1', String(awgParams.s1));
+      if (awgParams.s2 != null) sp.set('s2', String(awgParams.s2));
+      if (awgParams.s3 != null) sp.set('s3', String(awgParams.s3));
+      if (awgParams.s4 != null) sp.set('s4', String(awgParams.s4));
+      if (awgParams.h1 != null) sp.set('h1', String(awgParams.h1));
+      if (awgParams.h2 != null) sp.set('h2', String(awgParams.h2));
+      if (awgParams.h3 != null) sp.set('h3', String(awgParams.h3));
+      if (awgParams.h4 != null) sp.set('h4', String(awgParams.h4));
+      if (awgParams.i1 != null) sp.set('i1', String(awgParams.i1));
+      if (awgParams.i2 != null) sp.set('i2', String(awgParams.i2));
+      if (awgParams.i3 != null) sp.set('i3', String(awgParams.i3));
+      if (awgParams.i4 != null) sp.set('i4', String(awgParams.i4));
+      if (awgParams.i5 != null) sp.set('i5', String(awgParams.i5));
+      if (remark) sp.set('remarks', remark);
+      if (peerPubKey) sp.set('peerPublicKey', peerPubKey);
+      return url.toString();
+    }
     default:
       return '';
   }
@@ -1234,6 +1279,9 @@ export function genInboundLinks(input: GenInboundLinksInput): string {
   if (inbound.protocol === 'wireguard') {
     return genWireguardConfigs({ inbound, remark, hostOverride, fallbackHostname });
   }
+  if (inbound.protocol === 'amneziawg') {
+    return genAWGConfigs({ inbound, remark, hostOverride, fallbackHostname });
+  }
   return '';
 }
 
@@ -1310,4 +1358,68 @@ export function isPostQuantumLink(link: string): boolean {
   if (link.includes('mlkem768') || link.includes('mldsa65')) return true;
   if (link.includes('ML-KEM-768')) return true;
   return false;
+}
+
+// AmneziaWG per-client .conf text (mirrors genWireguardConfig layout but
+// with the AWG obfuscation fields appended to the [Interface] section).
+function genAWGClientConfig(
+  settings: Record<string, unknown>,
+  address: string,
+  port: number,
+  remark: string,
+  client: Record<string, unknown>,
+): string {
+  const params = (settings.params ?? {}) as Record<string, unknown>;
+  const serverPubKey = typeof settings.secretKey === 'string' && settings.secretKey.length > 0
+    ? Wireguard.generateKeypair(settings.secretKey).publicKey
+    : '';
+  const peerPrivKey = (client.privateKey as string | undefined) ?? '';
+  const peerAllowedIPs = Array.isArray(client.allowedIPs) ? (client.allowedIPs as string[]).join(', ') : '10.66.0.0/24';
+  const dns = typeof settings.dns === 'string' ? settings.dns : '1.1.1.1';
+  const mtu = typeof settings.mtu === 'number' ? settings.mtu : 1420;
+
+  const pv = (k: string) => params[k] != null ? `${k.toUpperCase()} = ${params[k]}\n` : '';
+
+  let txt = `# ${remark}\n[Interface]\n`;
+  txt += `PrivateKey = ${peerPrivKey}\n`;
+  txt += `Address = ${peerAllowedIPs}\n`;
+  txt += `DNS = ${dns}\n`;
+  txt += `MTU = ${mtu}\n`;
+  txt += pv('jc');
+  txt += pv('jmin');
+  txt += pv('jmax');
+  txt += pv('s1');
+  txt += pv('s2');
+  txt += pv('s3');
+  txt += pv('s4');
+  txt += pv('h1');
+  txt += pv('h2');
+  txt += pv('h3');
+  txt += pv('h4');
+  txt += pv('i1');
+  txt += pv('i2');
+  txt += pv('i3');
+  txt += pv('i4');
+  txt += pv('i5');
+  txt += `\n[Peer]\n`;
+  txt += `PublicKey = ${serverPubKey}\n`;
+  txt += `AllowedIPs = 0.0.0.0/0, ::/0\n`;
+  txt += `Endpoint = ${formatUrlHost(address)}:${port}\n`;
+  return txt;
+}
+
+// AWG fanout: generates one .conf text per client, joined with double newline.
+export function genAWGConfigs({ inbound, remark = '', hostOverride = '', fallbackHostname = '' }: GenWireguardFanoutInput): string {
+  if (inbound.protocol !== 'amneziawg') return '';
+  const addr = resolveAddr(inbound, hostOverride, fallbackHostname);
+  const settings = inbound.settings as Record<string, unknown>;
+  const clients = Array.isArray(settings.clients) ? (settings.clients as Record<string, unknown>[]) : [];
+  if (clients.length === 0) return '';
+  return clients
+    .map((client, i) => {
+      const sep = remark ? '-' : '';
+      const clientRemark = `${remark}${sep}${i + 1}`;
+      return genAWGClientConfig(settings, addr, inbound.port, clientRemark, client);
+    })
+    .join('\r\n');
 }
