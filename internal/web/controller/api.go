@@ -106,6 +106,10 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 	a.settingController = NewSettingController(api)
 	a.xraySettingController = NewXraySettingController(api)
 
+	// AmneziaWG utility endpoints (keypair + params generation)
+	awgGroup := api.Group("/awg")
+	NewAWGController(awgGroup)
+
 	// Extra routes
 	api.POST("/backuptotgbot", a.BackuptoTgbot)
 }

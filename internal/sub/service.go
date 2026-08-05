@@ -470,7 +470,7 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		JOIN client_inbounds ON client_inbounds.inbound_id = inbounds.id
 		JOIN clients ON clients.id = client_inbounds.client_id
 		WHERE
-			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','mtproto')
+			inbounds.protocol in ('vmess','vless','trojan','shadowsocks','hysteria','wireguard','mtproto','amneziawg')
 			AND clients.sub_id = ? AND inbounds.enable = ?
 	)`, subId, true).Order("sub_sort_index ASC").Order("id ASC").Find(&inbounds).Error
 	if err != nil {
@@ -621,6 +621,8 @@ func (s *SubService) GetLink(inbound *model.Inbound, email string) string {
 		return s.genMtprotoLink(inbound, email)
 	case "wireguard":
 		return s.genWireguardLink(inbound, email)
+	case "amneziawg":
+		return s.genAmneziaWGLink(inbound, email)
 	}
 	return ""
 }
@@ -665,6 +667,138 @@ func (s *SubService) genWireguardLink(inbound *model.Inbound, email string) stri
 		params["keepalive"] = strconv.Itoa(client.KeepAlive)
 	}
 	return buildLinkWithParams(link, params, s.genRemark(inbound, email, "", ""))
+}
+
+// genAmneziaWGLink builds a per-client amneziawg://<base64url-conf>#Name link.
+// The entire client .conf (Interface + Peer sections, including AWG 2.0
+// obfuscation parameters) is base64url-encoded and embedded in the URI so INCY
+// and AmneziaVPN clients can import it directly from the subscription body.
+// Returns "" when the client has no private key.
+func (s *SubService) genAmneziaWGLink(inbound *model.Inbound, email string) string {
+	if inbound.Protocol != model.AmneziaWG {
+		return ""
+	}
+	resolved, ok := s.clientForLink(inbound, email)
+	if !ok || resolved.PrivateKey == "" {
+		return ""
+	}
+
+	rawSettings := s.linkSettings(inbound)
+	settingsJSON, _ := json.Marshal(rawSettings)
+
+	var settings awgSettings
+	if err := json.Unmarshal(settingsJSON, &settings); err != nil {
+		return ""
+	}
+
+	peer := awgPeerEntry{
+		PrivateKey:   resolved.PrivateKey,
+		PublicKey:    resolved.PublicKey,
+		PreSharedKey: resolved.PreSharedKey,
+		AllowedIPs:   resolved.AllowedIPs,
+		KeepAlive:    resolved.KeepAlive,
+	}
+
+	serverHost := s.resolveInboundAddress(inbound)
+	serverPort := inbound.Port
+	remark := s.genRemark(inbound, email, "", "")
+
+	conf := buildAWGClientConf(serverHost, serverPort, settings, peer)
+	b64 := base64.RawURLEncoding.EncodeToString([]byte(conf))
+	return fmt.Sprintf("amneziawg://%s#%s", b64, url.PathEscape(remark))
+}
+
+// awgSettings mirrors awg.Settings for JSON parsing in the sub package
+// without creating an import cycle back into the awg package.
+type awgSettings struct {
+	SecretKey string `json:"secretKey"`
+	PublicKey string `json:"publicKey"`
+	Address   string `json:"address"`
+	MTU       int    `json:"mtu"`
+	DNS       string `json:"dns"`
+	Params    struct {
+		Jc   uint32 `json:"jc"`
+		Jmin uint32 `json:"jmin"`
+		Jmax uint32 `json:"jmax"`
+		S1   uint32 `json:"s1"`
+		S2   uint32 `json:"s2"`
+		S3   uint32 `json:"s3"`
+		S4   uint32 `json:"s4"`
+		H1   uint32 `json:"h1"`
+		H2   uint32 `json:"h2"`
+		H3   uint32 `json:"h3"`
+		H4   uint32 `json:"h4"`
+		I1   string `json:"i1"`
+		I2   string `json:"i2"`
+		I3   string `json:"i3"`
+		I4   string `json:"i4"`
+		I5   string `json:"i5"`
+	} `json:"params"`
+}
+
+type awgPeerEntry struct {
+	PrivateKey   string
+	PublicKey    string
+	PreSharedKey string
+	AllowedIPs   []string
+	KeepAlive    int
+}
+
+// buildAWGClientConf renders the [Interface]+[Peer] .conf that goes into the
+// amneziawg:// URI. Identical to awg.ClientConf but without the import dep.
+func buildAWGClientConf(serverHost string, serverPort int, s awgSettings, peer awgPeerEntry) string {
+	mtu := s.MTU
+	if mtu <= 0 {
+		mtu = 1420
+	}
+	dns := s.DNS
+	if dns == "" {
+		dns = "1.1.1.1"
+	}
+
+	var b strings.Builder
+	b.WriteString("[Interface]\n")
+	fmt.Fprintf(&b, "PrivateKey = %s\n", peer.PrivateKey)
+	if len(peer.AllowedIPs) > 0 {
+		fmt.Fprintf(&b, "Address = %s\n", peer.AllowedIPs[0])
+	}
+	fmt.Fprintf(&b, "DNS = %s\n", dns)
+	fmt.Fprintf(&b, "MTU = %d\n", mtu)
+
+	// AWG 2.0 obfuscation parameters.
+	p := s.Params
+	fmt.Fprintf(&b, "Jc = %d\n", p.Jc)
+	fmt.Fprintf(&b, "Jmin = %d\n", p.Jmin)
+	fmt.Fprintf(&b, "Jmax = %d\n", p.Jmax)
+	fmt.Fprintf(&b, "S1 = %d\n", p.S1)
+	fmt.Fprintf(&b, "S2 = %d\n", p.S2)
+	fmt.Fprintf(&b, "S3 = %d\n", p.S3)
+	fmt.Fprintf(&b, "S4 = %d\n", p.S4)
+	fmt.Fprintf(&b, "H1 = %d\n", p.H1)
+	fmt.Fprintf(&b, "H2 = %d\n", p.H2)
+	fmt.Fprintf(&b, "H3 = %d\n", p.H3)
+	fmt.Fprintf(&b, "H4 = %d\n", p.H4)
+	if p.I1 != "" {
+		fmt.Fprintf(&b, "I1 = %s\n", p.I1)
+		fmt.Fprintf(&b, "I2 = %s\n", p.I2)
+		fmt.Fprintf(&b, "I3 = %s\n", p.I3)
+		fmt.Fprintf(&b, "I4 = %s\n", p.I4)
+		fmt.Fprintf(&b, "I5 = %s\n", p.I5)
+	}
+
+	b.WriteString("\n[Peer]\n")
+	fmt.Fprintf(&b, "PublicKey = %s\n", s.PublicKey)
+	if peer.PreSharedKey != "" {
+		fmt.Fprintf(&b, "PresharedKey = %s\n", peer.PreSharedKey)
+	}
+	fmt.Fprintf(&b, "Endpoint = %s:%d\n", serverHost, serverPort)
+	b.WriteString("AllowedIPs = 0.0.0.0/0, ::/0\n")
+	ka := peer.KeepAlive
+	if ka <= 0 {
+		ka = 25
+	}
+	fmt.Fprintf(&b, "PersistentKeepalive = %d\n", ka)
+	return b.String()
 }
 
 // genMtprotoLink builds a per-client Telegram proxy deep link for an mtproto

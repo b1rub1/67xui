@@ -58,6 +58,7 @@ import './InboundFormModal.css';
 import { AdvancedAllEditor, AdvancedSliceEditor } from './advanced-editors';
 import { formatInboundIssue, formatInboundValidation } from './formatValidationError';
 import {
+  AmneziaWGFields,
   HttpFields,
   HysteriaFields,
   MixedFields,
@@ -244,6 +245,7 @@ export default function InboundFormModal({
   const hasSelectableTransport =
     protocol !== Protocols.HYSTERIA
     && protocol !== Protocols.WIREGUARD
+    && protocol !== Protocols.AMNEZIAWG
     && protocol !== Protocols.TUNNEL;
 
   const wPort = useWatch({ control, name: 'port' });
@@ -306,6 +308,41 @@ export default function InboundFormModal({
   const regenInboundWg = () => {
     const kp = Wireguard.generateKeypair();
     setV('settings.secretKey', kp.privateKey);
+  };
+
+  // AmneziaWG keypair — reuses the same Curve25519 key generation as WireGuard.
+  const awgSecretKey = useWatch({ control, name: 'settings.secretKey' });
+  const awgPubKey = protocol === Protocols.AMNEZIAWG && typeof awgSecretKey === 'string' && awgSecretKey.length > 0
+    ? Wireguard.generateKeypair(awgSecretKey).publicKey
+    : '';
+
+  const regenInboundAWG = () => {
+    const kp = Wireguard.generateKeypair();
+    setV('settings.secretKey', kp.privateKey);
+  };
+
+  const regenAWGParams = () => {
+    // Generate random AWG 2.0 obfuscation parameters client-side.
+    const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const uniqueH = (): number[] => {
+      const used = new Set<number>();
+      const vals: number[] = [];
+      while (vals.length < 4) {
+        const v = randInt(10, 2147483647);
+        if (!used.has(v)) { used.add(v); vals.push(v); }
+      }
+      return vals;
+    };
+    const jc = randInt(3, 8);
+    const jmin = randInt(50, 200);
+    const jmax = randInt(jmin + 50, Math.min(jmin + 800, 1250));
+    const [h1, h2, h3, h4] = uniqueH();
+    setV('settings.params', {
+      jc, jmin, jmax,
+      s1: randInt(15, 100), s2: randInt(15, 100), s3: randInt(5, 30), s4: randInt(1, 20),
+      h1, h2, h3, h4,
+      i1: `<r 40>`, i2: `<r 15>`, i3: `<r 15>`, i4: `<r 10>`, i5: `<r 10>`,
+    });
   };
 
   const matchesVlessAuth = (
@@ -451,7 +488,7 @@ export default function InboundFormModal({
             }],
           },
         });
-      } else if (next === Protocols.WIREGUARD || next === Protocols.TUNNEL) {
+      } else if (next === Protocols.WIREGUARD || next === Protocols.TUNNEL || next === Protocols.AMNEZIAWG) {
         setV('streamSettings', { security: 'none' });
       } else {
         const current = getV('streamSettings') as { network?: string } | undefined;
@@ -661,6 +698,14 @@ export default function InboundFormModal({
   const protocolTab = (
     <>
       {protocol === Protocols.WIREGUARD && <WireguardFields wgPubKey={wgPubKey} regenInboundWg={regenInboundWg} />}
+
+      {protocol === Protocols.AMNEZIAWG && (
+        <AmneziaWGFields
+          awgPubKey={awgPubKey}
+          regenInboundAWG={regenInboundAWG}
+          regenAWGParams={regenAWGParams}
+        />
+      )}
 
       {protocol === Protocols.TUN && <TunFields />}
 
